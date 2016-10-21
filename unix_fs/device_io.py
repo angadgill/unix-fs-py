@@ -1,6 +1,7 @@
 """ All low-level device IO classes and functions """
 
 import io
+import os
 
 class Disk(object):
     """ Base class for writing to a raw disk """
@@ -9,12 +10,13 @@ class Disk(object):
 
     def open(self):
         # Open with binary mode with 0 buffering
-        try:
-            # Open root path in append binary mode 'rb+'
-            self._disk = io.open(self.root, 'rb+', buffering = 0)
-        except IOError:
-            # If root path does not exist, open in write binary mode
+        if not os.path.exists(self.root):
+            # Create file if it doesn't already exist
             self._disk = io.open(self.root, 'wb', buffering = 0)
+            self._disk.close()
+
+        # Open root path in append binary mode 'rb+'
+        self._disk = io.open(self.root, 'rb+', buffering = 0)
 
     def close(self):
         self._disk.close()
