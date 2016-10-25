@@ -102,10 +102,19 @@ class Loopback(LoggingMixIn, Operations):
 
 
 if __name__ == '__main__':
-    if len(argv) != 3:
-        print('usage: %s <root> <mountpoint>' % argv[0])
+    def error_msg():
+        print('usage: %s <root> <mountpoint> [foreground/background]' % argv[0])
         exit(1)
 
-    logging.basicConfig(level=logging.DEBUG)
+    if len(argv) < 4:
+        error_msg()
 
-    fuse = FUSE(Loopback(argv[1]), argv[2], foreground=True)
+    if argv[3] == 'foreground':
+        foreground = True
+    elif argv[3] == 'background':
+        foreground = False
+    else:
+        error_msg()
+
+    logging.basicConfig(level=logging.DEBUG)
+    fuse = FUSE(Loopback(argv[1]), argv[2], foreground=foreground)

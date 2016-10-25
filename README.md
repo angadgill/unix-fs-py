@@ -4,7 +4,7 @@ Python implementation of the Unix File System.
 Core of the file system is in the `unix_fs` folder. All tests are in the `tests` folder.
 
 To run tests run the following:  
-- `python -m unittest tests`  
+- `python -m unittest -v`
 
 ## Loopback file system
 A Loopback file system is provided under `fusepy_example` directory for use as a standard to 
@@ -17,7 +17,7 @@ To run the Loopback file system:
   - `mkdir ~/tempfs_root`
   - `mkdir ~/tempfs_mountpoint`
 - Mount the file system:  
-  - `python fusepy_example/loopback.py ~/tempfs_root ~/tempfs_mountpoint`
+  - `python fusepy_example/loopback.py ~/tempfs_root ~/tempfs_mountpoint foreground`
 - `cd` to `mountpoint` and modify as needed, e.g.:
   - `cd ~/tempfs_mountpoint`
   - `echo "this is a test" >> temp.file`
