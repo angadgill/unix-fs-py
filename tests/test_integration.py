@@ -4,8 +4,8 @@ import unittest
 import subprocess
 import os
 
-MOUNTPOINT = '/Users/angad/tempfs_mountpoint'
-ROOT = '/Users/angad/tempfs_root'
+MOUNTPOINT = 'tempfs_mountpoint'
+ROOT = 'tempfs_root'
 
 
 class TestFileSystem(unittest.TestCase):
@@ -33,16 +33,25 @@ class TestFileSystem(unittest.TestCase):
 
 class TestLoopback(TestFileSystem):
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(self):
         """ Runs before first test is run """
+        # create directories
+        for dir in [MOUNTPOINT, ROOT]:
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+        # mount file system
         command = 'python fusepy_example/loopback.py {} {} background'.format(ROOT, MOUNTPOINT)
         subprocess.call(command, shell=True)
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(self):
         """ Runs after last test is run """
+        # unmount file system
         command = 'umount Loopback'
         subprocess.call(command, shell=True)
+        # delete directories
+        for dir in [MOUNTPOINT, ROOT]:
+            os.removedirs(dir)
 
     def test_file_create_delete(self):
         filepath = self.filename_to_path('file1')
