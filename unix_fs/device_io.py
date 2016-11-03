@@ -10,10 +10,10 @@ class Disk(object):
 
     def open(self):
         # Open with binary mode with 0 buffering
-        if not os.path.exists(self.root):
-            # Create file if it doesn't already exist
-            self._disk = io.open(self.root, 'wb', buffering = 0)
-            self._disk.close()
+        # if not os.path.exists(self.root):
+        #     # Create file if it doesn't already exist
+        #     self._disk = io.open(self.root, 'wb', buffering = 0)
+        #     self._disk.close()
 
         # Open root path in append binary mode 'rb+'
         self._disk = io.open(self.root, 'rb+', buffering = 0)
