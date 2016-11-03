@@ -1,6 +1,16 @@
-""" All data structures for the file system """
+"""
+All data structures for the file system
+
+Layout:
+Superblock
+All Inodes
+Inode Freelist
+Block Freelist
+Root Directory
+"""
 
 BLOCK_SIZE = 50
+NUM_BLOCKS = 100
 ADDRESS_LENGTH = 2  # bytes
 
 NUM_INODES = 10
@@ -14,14 +24,15 @@ MAX_FILENAME_LENGTH = 5  # bytes
 class Block(object):
     """ Base Block class for the file system """
     def __init__(self, data):
-        self.data = data
+        # self.data = data
+        pass
 
-    def __bytes__(self):
-        """
-        Magic function which is called when bytes() is called on the object.
-        Block bytes need to be padded to the BLOCK_SIZE of the file system.
-        """
-        return self.pad_bytes_to_block(bytes(self.data))
+    # def __bytes__(self):
+    #     """
+    #     Magic function which is called when bytes() is called on the object.
+    #     Block bytes need to be padded to the BLOCK_SIZE of the file system.
+    #     """
+    #     return self.pad_bytes_to_block(bytes(self.data))
 
     def pad_bytes_to_block(self, byte_data):
         """ Pads byte data to BLOCK_SIZE """
@@ -104,7 +115,7 @@ class Inode(Block):
         int_list = self.bytes_to_int_list(bytes)
         self.address_direct = int_list[:INODE_NUM_DIRECT_BLOCKS]
         self.address_1_indirect = int_list[INODE_NUM_DIRECT_BLOCKS:INODE_NUM_1_INDIRECT_BLOCKS]
-        
+
 
 class File(Inode):
     def __init__(self):
@@ -124,16 +135,6 @@ class DataBlock(Block):
 
     def __read__(self, bytes):
         self.data = self.bytes_to_int_list(bytes)
-
-class InodeFreeList(Block):
-    def __init__(self):
-        self.free_inodes = [True] * NUM_INODES  # list of booleans. True means inode is free.
-
-    def __bytes__(self):
-        return self.int_list_to_bytes(self.free_inodes)
-
-    def __read__(self, bytes):
-        self.free_inodes = self.bytes_to_int_list(bytes)
 
 
 class DirectoryBlock(Block):
@@ -159,3 +160,37 @@ class DirectoryBlock(Block):
         print(self.name)
         print(self.filenames)
         print(self.inode_numbers)
+
+
+class InodeFreeListBootstrap(Block):
+    address = 10
+    def __init__(self):
+        self.free_inodes = [True] * NUM_INODES  # list of booleans. True means inode is free.
+
+    def __bytes__(self):
+        return self.int_list_to_bytes(self.free_inodes)
+
+    def __read__(self, bytes):
+        self.free_inodes = self.bytes_to_int_list(bytes)
+
+
+class InodeFreeList(InodeFreeListBootstrap):
+    def __init__(self):
+        super().__init__()
+
+
+class BlockFreeListBootstrap(Block):
+    def __init__(self):
+        self.free_blocks = [True] * NUM_BLOCKS
+
+    def __bytes__(self):
+        return self.int_list_to_bytes(self.free_blocks)
+
+
+    def __read__(self, bytes):
+        self.free_blocks = self.bytes_to_int_list(bytes)
+
+
+class BlockFreelist(BlockFreeListBootstrap):
+    def __init__(self):
+        super().__init__()

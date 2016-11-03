@@ -1,12 +1,25 @@
 """ All utility functions go here """
-from unix_fs import data_structures
+from unix_fs import device_io
+from unix_fs import data_structures as ds
 
 
 def makefs(root_path):
+    """
+        Layout:
+        Superblock
+        All Inodes
+        Inode Freelist
+        Block Freelist
+        Root Directory
+    """
     print("Creating file system at {}".format(root_path))
-    with open(root_path, 'wb') as f:
-        f.write(bytes(data_structures.SuperBlock()))
-        for _ in range(data_structures.NUM_INODES):  # I-list
-            f.write(bytes(data_structures.Inode()))
-        f.write(bytes(data_structures.InodeFreeList()))
-        f.write(bytes(data_structures.Directory('/')))
+    bootstrap_data = bytes(ds.SuperBlock())
+    bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_INODES)
+    bootstrap_data += bytes(ds.InodeFreeListBootstrap())
+    bootstrap_data += bytes(ds.BlockFreeListBootstrap())
+    bootstrap_data += bytes(ds.DirectoryBlock('/'))
+    disk = device_io.Disk(root_path)
+    disk.open()
+    disk.seek(0)
+    disk.write(bootstrap_data)
+    disk.close()
