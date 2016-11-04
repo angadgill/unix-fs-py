@@ -72,19 +72,18 @@ class Block(object):
         return b
 
     def bytes_to_str(self, bytes):
-        return bytes.decode().rstrip()
+        return bytes.decode().rstrip('\x00')
 
     def bytes_to_str_list(self, byte_data):
         """ Converts byte data containing MAX_FILENAME_LENGTH size strings. Data is also padded to BLOCK_SIZE"""
         num_str = int(len(byte_data) / MAX_FILENAME_LENGTH)
         byte_list = [byte_data[i * MAX_FILENAME_LENGTH:(i + 1) * MAX_FILENAME_LENGTH] for i in range(num_str)]
-        str_list = [b.decode().rstrip() for b in byte_list]
+        str_list = [self.bytes_to_str(b) for b in byte_list]
         return str_list
 
     def __write__(self):
         self._device.seek(self.address)
         self._device.write(self.__bytes__())
-
 
 
 class SuperBlock(Block):
@@ -123,7 +122,7 @@ class Inode(Block):
         else: # else, read inode from device
             self.index = index
             self._device.seek(self.address)
-            self._device.read()
+            self._device.read(BLOCK_SIZE)
 
     def __bytes__(self):
         # return self.pad_bytes_to_block(self.c_long_list_to_bytes(self.address_direct))
@@ -155,13 +154,9 @@ class File(Inode):
         super().__init__(itype=1, device=device, index=index)
 
 
-
 class Directory(Inode):
     def __init__(self, device, index=None):
         super().__init__(itype=2, device=device, index=index)
-
-
-
 
 
 class DirectoryBlock(Block):
@@ -196,9 +191,6 @@ class InodeFreeListBootstrap(Block):
     def __bytes__(self):
         return self.int_list_to_bytes(self.list)
 
-    def __read__(self, bytes):
-        self.list = self.bytes_to_int_list(bytes)
-
 
 class InodeFreeList(InodeFreeListBootstrap):
     address = BLOCK_SIZE * (1 + NUM_INODES)
@@ -206,8 +198,7 @@ class InodeFreeList(InodeFreeListBootstrap):
     def __init__(self, device):
         super().__init__()
         self._device = device
-        device.seek(self.address)
-        self.__read__(self._device.read(len(bytes(InodeFreeListBootstrap()))))
+        self.__read__()
 
     def allocate(self):
         """ Finds the first free block and returns block index """
@@ -220,6 +211,11 @@ class InodeFreeList(InodeFreeListBootstrap):
     def deallocate(self, index):
         self.list[index] = 1
         self.__write__()
+
+    def __read__(self):
+        self._device.seek(self.address)
+        data = self._device.read(len(bytes(InodeFreeListBootstrap())))
+        self.list = self.bytes_to_int_list(data)
 
 
 class BlockFreeListBootstrap(Block):
@@ -230,18 +226,13 @@ class BlockFreeListBootstrap(Block):
         return self.int_list_to_bytes(self.list)
 
 
-    def __read__(self, bytes):
-        self.list = self.bytes_to_int_list(bytes)
-
-
 class BlockFreelist(BlockFreeListBootstrap):
     address = BLOCK_SIZE * (1 + NUM_INODES) + len(bytes(InodeFreeListBootstrap()))
 
     def __init__(self, device):
         super().__init__()
         self._device = device
-        device.seek(self.address)
-        self.__read__(self._device.read(len(bytes(BlockFreeListBootstrap()))))
+        self.__read__()
 
     def allocate(self):
         """ Finds the first free block and returns block index """
@@ -254,6 +245,11 @@ class BlockFreelist(BlockFreeListBootstrap):
     def deallocate(self, index):
         self.list[index] = 1
         self.__write__()
+
+    def __read__(self):
+        self._device.seek(self.address)
+        data = self._device.read(len(bytes(InodeFreeListBootstrap())))
+        self.list = self.bytes_to_int_list(data)
 
 
 class DataBlock(Block):
@@ -274,7 +270,7 @@ class DataBlock(Block):
         else:  # else, read inode from device
             self.index = index
             self._device.seek(self.address)
-            self._device.read()
+            self._device.read(BLOCK_SIZE)
 
     def __read__(self, bytes):
         self.data = self.bytes_to_int_list(bytes)
@@ -291,3 +287,15 @@ class DataBlock(Block):
     def deallocate(self):
         bfree = BlockFreelist(self._device)
         bfree.deallocate(self.index)
+
+    def __write__(self, data):
+        self._device.seek(self.address)
+        if type(data) == str:
+            self._device.write(self.str_to_bytes(data, pad_to=BLOCK_SIZE))
+        else:
+            self._device.write(bytes(data))
+
+    def __read__(self):
+        self._device.seek(self.address)
+        data = self._device.read(BLOCK_SIZE)
+        return self.bytes_to_str(data)
