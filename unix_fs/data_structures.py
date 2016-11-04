@@ -28,14 +28,13 @@ class Block(object):
     """ Base Block class for the file system """
     def __init__(self, device):
         self._device = device
-        pass
 
     def __bytes__(self):
         """
         Magic function which is called when bytes() is called on the object.
         Block bytes need to be padded to the BLOCK_SIZE of the file system.
         """
-        return self.pad_bytes_to_block(bytes(self.data))
+        pass
 
     def pad_bytes_to_block(self, byte_data):
         """ Pads byte data to BLOCK_SIZE """
@@ -145,7 +144,7 @@ class Inode(Block):
         ifree = InodeFreeList(self._device)
         self.index = ifree.allocate()
 
-    def deallocae(self):
+    def deallocate(self):
         ifree = InodeFreeList(self._device)
         ifree.deallocate(self.index)
 
@@ -154,7 +153,7 @@ class Inode(Block):
 class File(Inode):
     def __init__(self, device, index=None):
         super().__init__(itype=1, device=device, index=index)
-    
+
 
 
 class Directory(Inode):
@@ -162,12 +161,7 @@ class Directory(Inode):
         super().__init__(itype=2, device=device, index=index)
 
 
-class DataBlock(Block):
-    def __init__(self):
-        self.data = 0
 
-    def __read__(self, bytes):
-        self.data = self.bytes_to_int_list(bytes)
 
 
 class DirectoryBlock(Block):
@@ -260,3 +254,40 @@ class BlockFreelist(BlockFreeListBootstrap):
     def deallocate(self, index):
         self.list[index] = 1
         self.__write__()
+
+
+class DataBlock(Block):
+    index0_address = BLOCK_SIZE + (BLOCK_SIZE * NUM_INODES) + \
+                     len(bytes(InodeFreeListBootstrap())) + \
+                     len(bytes(BlockFreeListBootstrap())) + \
+                     len(bytes(DirectoryBlock('/')))
+
+    def __init__(self, device, index=None):
+        self._device = device
+
+        # default initialization
+        self.index = None
+
+        # If no index is provided, allocate new inode
+        if index is None:
+            self.allocate()
+        else:  # else, read inode from device
+            self.index = index
+            self._device.seek(self.address)
+            self._device.read()
+
+    def __read__(self, bytes):
+        self.data = self.bytes_to_int_list(bytes)
+
+    @property
+    def address(self):
+        """ Return block address """
+        return self.index0_address + self.index*BLOCK_SIZE
+
+    def allocate(self):
+        bfree = BlockFreelist(self._device)
+        self.index = bfree.allocate()
+
+    def deallocate(self):
+        bfree = BlockFreelist(self._device)
+        bfree.deallocate(self.index)
