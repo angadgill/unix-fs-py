@@ -3,10 +3,14 @@
 import io
 import os
 
+from unix_fs.data_structures import BLOCK_SIZE
+
+
 class Disk(object):
     """ Base class for writing to a raw disk """
     def __init__(self, root):
         self.root = root
+        self.open()
 
     def open(self):
         # Open with binary mode with 0 buffering
@@ -21,9 +25,9 @@ class Disk(object):
     def close(self):
         self._disk.close()
 
-    def read(self, n):
-        """ Read n bytes """
-        return self._disk.read(n)
+    def read(self, n=1):
+        """ Read n blocks """
+        return self._disk.read(n*BLOCK_SIZE)
 
     def write(self, b):
         """ Write bytearray b. Returns int n: number of bytes written """

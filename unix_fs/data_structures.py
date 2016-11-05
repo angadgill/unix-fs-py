@@ -10,10 +10,11 @@ Root Directory
 """
 import math
 from typing import List
+import struct
 
 BLOCK_SIZE = 50
 NUM_BLOCKS = 100
-ADDRESS_LENGTH = 2  # bytes
+ADDRESS_LENGTH = 4  # bytes # Not using this! All addresses are 8 bytes (long int)
 
 NUM_INODES = 10
 INODE_NUM_DIRECT_BLOCKS = 5
@@ -90,40 +91,66 @@ class Base(object):
 
 
 class Block(Base):
-    """ Base Block class for the file system """
-    address = 0  # type: int
+    """ All data types stored on disk are stored as Blocks. Data is read and written to device in BLOCK_SIZE chunks """
 
-    def __init__(self, device):
+    def __init__(self, device=None):
         self._device = device
+        self.address = 0  # type: int
+        self._format = ''  # type: str # Packing format for list self._item
 
-    def __bytes__(self):
+    @property
+    def _items(self) -> List:
+        """ Returns a list of all properties that are written to disk """
+        return []
+
+    @_items.setter
+    def _items(self, value) -> None:
+        """ Reassign values read from disk to object properties """
+        [_] = value  # List here should be the same as the one in @property def _items
+
+    @property
+    def _size(self) -> int:
+        """ Byte size of object on disk """
+        return struct.calcsize(self._format)
+
+    def __bytes__(self) -> bytes:
         """
         Magic function which is called when bytes() is called on the object.
-        Block bytes need to be padded to the BLOCK_SIZE of the file system.
+        Must return bytes padded to the BLOCK_SIZE of the file system.
         """
-        pass
+        bytes_data = struct.pack(self._format, *self._items)
+        return self.pad_bytes_to_block(bytes_data)
 
-    def __write__(self):
+    def __write__(self) -> None:
         self._device.seek(self.address)
         self._device.write(self.__bytes__())
 
+    def __decode__(self, byte_data):
+        byte_data = byte_data[:self._size]  # truncate to remove padding bytes
+        return struct.unpack(self._format, byte_data)
+
+    def __read__(self):
+        self._device.seek(self.address)
+        byte_data = self._device.read(self._size)
+        self._items = self.__decode__(byte_data)
+
 
 class SuperBlock(Block):
-    def __init__(self, device, bytes_data=None):
-        super().__init__(device=device)
-        if bytes_data is None:
-            self.block_size = BLOCK_SIZE
-            self.num_inodes = NUM_INODES
-        else:
-            self.__read__((bytes_data))
+    def __init__(self, device=None):
+        super().__init__(device)
+        self.block_size = BLOCK_SIZE
+        self.num_inodes = NUM_INODES
+        self._format = 'll'
+        if device is not None:
+            self.__read__()
 
-    def __bytes__(self):
-        data = [self.block_size, self.num_inodes]
-        return self.int_list_to_bytes(data)
+    @property
+    def _items(self):
+        return [self.block_size, self.num_inodes]
 
-    def __read__(self, bytes_data):
-        int_list = self.bytes_to_int_list(bytes_data)
-        self.block_size, self.num_inodes = int_list[:2]
+    @_items.setter
+    def _items(self, value):
+        [self.block_size, self.num_inodes] = value
 
 
 class Inode(Block):

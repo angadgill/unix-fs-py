@@ -25,15 +25,15 @@ class TestDisk(unittest.TestCase):
         """ Executed after each test case """
         os.remove(PATH)
 
-    def test_seek_read(self):
-        b = bytearray([12, 12, 12])
-        f = device_io.Disk(PATH)
-        f.open()
-        f.seek(0)
-        b2 = f.read(len(b))
-        f.close()
-        self.assertEqual(b, b2)
-
+    # def test_seek_read(self):
+    #     b = bytearray([12, 12, 12])
+    #     f = device_io.Disk(PATH)
+    #     f.open()
+    #     f.seek(0)
+    #     b2 = f.read(len(b))
+    #     f.close()
+    #     self.assertEqual(b, b2)
+    #
 
 """ data_structure.py """
 
@@ -45,10 +45,17 @@ class TestBase(unittest.TestCase):
     def tearDown(self):
         del self.cls
 
-    def test_pad_bytes_to_block(self):
+    def test_pad_bytes_to_block_1(self):
+        ds.BLOCK_SIZE = 5
+        expected = b'\x00\x00\x00\x00\x00'
+        output = self.cls.pad_bytes_to_block(bytes(1))
+        self.assertEqual(output, expected)
+
+    def test_pad_bytes_to_block_2(self):
         ds.BLOCK_SIZE = 10
-        d = self.cls.pad_bytes_to_block(bytes(1))
-        self.assertEqual(len(d), ds.BLOCK_SIZE)
+        expected = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        output = self.cls.pad_bytes_to_block(bytes(1))
+        self.assertEqual(output, expected)
 
     def test_int_to_byte_1(self):
         ds.ADDRESS_LENGTH = 4
@@ -167,6 +174,104 @@ class TestBase(unittest.TestCase):
         output = self.cls.bytes_to_str_list(input_data)
         self.assertEqual(output, expected)
 
+
+class TestSuperBlock(unittest.TestCase):
+    def setUp(self):
+        self.cls = ds.SuperBlock()
+        open(PATH, 'a').close()
+
+    def tearDown(self):
+        del self.cls
+        os.remove(PATH)
+
+    def test_bytes(self):
+        ds.BLOCK_SIZE = 30
+        self.cls = ds.SuperBlock()
+        expected = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
+                   b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        output = bytes(self.cls)
+        self.assertEqual(output, expected)
+
+    def test_decode_1(self):
+        ds.BLOCK_SIZE = 0  # precaution
+        self.cls = ds.SuperBlock()
+        input_data = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        expected = (30, 10)
+        output = self.cls.__decode__(input_data)
+        self.assertEqual(output, expected)
+
+    def test_decode_2(self):
+        ds.BLOCK_SIZE = 0  # precaution
+        self.cls = ds.SuperBlock()
+        input_data = b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        expected = (10, 10)
+        output = self.cls.__decode__(input_data)
+        self.assertEqual(output, expected)
+
+    def test_decode_no_device(self):
+        ds.BLOCK_SIZE = 0  # precaution
+        self.cls = ds.SuperBlock(None)
+        input_data = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        expected = (30, 10)
+        output = self.cls.__decode__(input_data)
+        self.assertEqual(output, expected)
+
+    def test_read_1(self):
+        ds.BLOCK_SIZE = 0  # precaution
+        input_data = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        device = device_io.Disk(PATH)
+        self.cls = ds.SuperBlock(device)
+        self.assertEqual(self.cls.block_size, 30)
+        self.assertEqual(self.cls.num_inodes, 10)
+
+    def test_read_2(self):
+        ds.BLOCK_SIZE = 0  # precaution
+        input_data = b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        device = device_io.Disk(PATH)
+        self.cls = ds.SuperBlock(device)
+        self.assertEqual(self.cls.block_size, 10)
+        self.assertEqual(self.cls.num_inodes, 10)
+
+    def test_write_1(self):
+        ds.BLOCK_SIZE = 30
+        ds.NUM_INODES = 10
+        expected = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
+                   b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        self.cls = ds.SuperBlock(None)
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.__write__()
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
+
+    def test_write_2(self):
+        ds.BLOCK_SIZE = 20
+        ds.NUM_INODES = 10
+        expected = b'\x14\x00\x00\x00\x00\x00\x00\x00' + \
+                   b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
+                   b'\x00\x00\x00\x00'
+        self.cls = ds.SuperBlock(None)
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.__write__()
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
 
 if __name__ == '__main__':
     unittest.main()
