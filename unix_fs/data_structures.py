@@ -9,6 +9,7 @@ Block Freelist
 Root Directory
 """
 import math
+from typing import List
 
 BLOCK_SIZE = 50
 NUM_BLOCKS = 100
@@ -36,16 +37,16 @@ class Block(object):
         """
         pass
 
-    def pad_bytes_to_block(self, byte_data):
+    @staticmethod
+    def pad_bytes_to_block(byte_data: bytes) -> bytes:
         """ Pads byte data to BLOCK_SIZE """
         if len(byte_data) < BLOCK_SIZE:
             byte_data = byte_data + bytes(BLOCK_SIZE - len(byte_data))
         return byte_data
 
-    def int_list_to_bytes(self, int_list, pad=True):
+    def int_list_to_bytes(self, int_list: List[int], pad: bool = True) -> List[bytes]:
         """ Converts list of ints to bytes of ADDRESS_LENGTH length using Little Endian byte order"""
         b = b''.join([x.to_bytes(ADDRESS_LENGTH, 'little') for x in int_list])
-        # b = struct.pack('i'*len(int_list), *int_list)
         if pad:
             b = self.pad_bytes_to_block(b)
         return b
@@ -121,18 +122,24 @@ class Inode(Block):
             self.allocate()
         else: # else, read inode from device
             self.index = index
-            self._device.seek(self.address)
-            self._device.read(BLOCK_SIZE)
+            self.__read__()
 
     def __bytes__(self):
         # return self.pad_bytes_to_block(self.c_long_list_to_bytes(self.address_direct))
-        data = [self.itype] + self.address_direct + self.address_1_indirect
+        data = self.itype + self.address_direct + self.address_1_indirect
         return self.int_list_to_bytes(data)
 
-    def __read__(self, bytes):
-        int_list = self.bytes_to_int_list(bytes)
-        self.address_direct = int_list[:INODE_NUM_DIRECT_BLOCKS]
-        self.address_1_indirect = int_list[INODE_NUM_DIRECT_BLOCKS:INODE_NUM_1_INDIRECT_BLOCKS]
+    def __read__(self):
+        self._device.seek(self.address)
+        data = self._device.read(BLOCK_SIZE)
+        int_list = self.bytes_to_int_list(data)
+        self.itype = int_list[:1]
+        start = 1
+        end = start + INODE_NUM_DIRECT_BLOCKS
+        self.address_direct = int_list[start:end]
+        start = end
+        end = start + INODE_NUM_1_INDIRECT_BLOCKS
+        self.address_1_indirect = int_list[start:end]
 
     @property
     def address(self):
@@ -171,11 +178,32 @@ class File(Inode):
                 break
         else:
              raise Exception('File full')
+        self.__write__()
 
 
 class Directory(Inode):
     def __init__(self, device, index=None):
         super().__init__(itype=2, device=device, index=index)
+
+    def write(self, data):
+        block = Directory(self._device)
+        self.add_block_to_list(block)
+        block.__write__(data)
+
+    def read(self):
+        """ Reads and returns the first block, for now """
+        block = DataBlock(self._device, self.address_direct[0])
+        return block.__read__()
+
+    def add_block_to_list(self, block):
+        # Find the first spot to add the block index to
+        for i in range(len(self.address_direct)):
+            if self.address_direct[i] == 0:
+                self.address_direct[i] = block.index
+                break
+        else:
+             raise Exception('File full')
+        self.__write__()
 
 
 class DirectoryBlock(Block):
@@ -282,17 +310,14 @@ class DataBlock(Block):
 
         # default initialization
         self.index = None
+        self.data = None
 
         # If no index is provided, allocate new inode
         if index is None:
             self.allocate()
         else:  # else, read inode from device
             self.index = index
-            self._device.seek(self.address)
-            self._device.read(BLOCK_SIZE)
-
-    def __read__(self, bytes):
-        self.data = self.bytes_to_int_list(bytes)
+            self.data = self.__read__()
 
     @property
     def address(self):

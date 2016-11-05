@@ -18,6 +18,7 @@ def makefs(root_path):
     bootstrap_data += bytes(ds.InodeFreeListBootstrap())
     bootstrap_data += bytes(ds.BlockFreeListBootstrap())
     bootstrap_data += bytes(ds.DirectoryBlock('/'))
+    bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_BLOCKS)
     disk = device_io.Disk(root_path)
     disk.open()
     disk.seek(0)
