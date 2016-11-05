@@ -23,20 +23,8 @@ NUM_FILES_PER_DIR = 5
 MAX_FILENAME_LENGTH = 5  # bytes
 
 
-class Block(object):
-    address = None  # type: int
-
-    """ Base Block class for the file system """
-    def __init__(self, device):
-        self._device = device
-
-    def __bytes__(self):
-        """
-        Magic function which is called when bytes() is called on the object.
-        Block bytes need to be padded to the BLOCK_SIZE of the file system.
-        """
-        pass
-
+class Base(object):
+    """ Base class with helper functions """
     @staticmethod
     def pad_bytes_to_block(byte_data: bytes) -> bytes:
         """ Pads byte data to BLOCK_SIZE """
@@ -100,25 +88,41 @@ class Block(object):
         str_list = [self.bytes_to_str(b, strip) for b in byte_list]
         return str_list
 
+
+class Block(Base):
+    """ Base Block class for the file system """
+    address = 0  # type: int
+
+    def __init__(self, device):
+        self._device = device
+
+    def __bytes__(self):
+        """
+        Magic function which is called when bytes() is called on the object.
+        Block bytes need to be padded to the BLOCK_SIZE of the file system.
+        """
+        pass
+
     def __write__(self):
         self._device.seek(self.address)
         self._device.write(self.__bytes__())
 
 
 class SuperBlock(Block):
-    def __init__(self, bytes=None):
-        if bytes is None:
+    def __init__(self, device, bytes_data=None):
+        super().__init__(device=device)
+        if bytes_data is None:
             self.block_size = BLOCK_SIZE
             self.num_inodes = NUM_INODES
         else:
-            self.__read__((bytes))
+            self.__read__((bytes_data))
 
     def __bytes__(self):
         data = [self.block_size, self.num_inodes]
         return self.int_list_to_bytes(data)
 
-    def __read__(self, bytes):
-        int_list = self.bytes_to_int_list(bytes)
+    def __read__(self, bytes_data):
+        int_list = self.bytes_to_int_list(bytes_data)
         self.block_size, self.num_inodes = int_list[:2]
 
 
