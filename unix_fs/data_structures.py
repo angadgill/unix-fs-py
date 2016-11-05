@@ -24,7 +24,7 @@ MAX_FILENAME_LENGTH = 5  # bytes
 
 
 class Block(object):
-    address = None
+    address = None  # type: int
 
     """ Base Block class for the file system """
     def __init__(self, device):
@@ -44,42 +44,60 @@ class Block(object):
             byte_data = byte_data + bytes(BLOCK_SIZE - len(byte_data))
         return byte_data
 
-    def int_list_to_bytes(self, int_list: List[int], pad: bool = True) -> List[bytes]:
+    """ int <--> bytes conversions """
+    @staticmethod
+    def int_to_bytes(int_data: int) -> bytes:
+        """ Converts ints to bytes and pads it to ADDRESS_LENGTH using little endian. """
+        return int_data.to_bytes(ADDRESS_LENGTH, 'little')
+
+    def int_list_to_bytes(self, int_list: List[int], pad: bool = True) -> bytes:
         """ Converts list of ints to bytes of ADDRESS_LENGTH length using Little Endian byte order"""
-        b = b''.join([x.to_bytes(ADDRESS_LENGTH, 'little') for x in int_list])
+        b = b''.join([self.int_to_bytes(x) for x in int_list])
         if pad:
             b = self.pad_bytes_to_block(b)
         return b
 
-    def bytes_to_int_list(self, byte_data):
-        """ Converts byte data containing ADDRESS_LENGTH size ints. Data is also padded to BLOCK_SIZE"""
-        num_ints = int(len(byte_data)/ADDRESS_LENGTH)
-        byte_list = [byte_data[i*ADDRESS_LENGTH:(i+1)*ADDRESS_LENGTH] for i in range(num_ints)]
-        int_list = [int.from_bytes(b, 'little') for b in byte_list]
-        # int_list = struct.unpack('i'*num_ints, byte_data)
+    @staticmethod
+    def bytes_to_int(byte_data: bytes) -> int:
+        return int.from_bytes(byte_data, 'little')
+
+    @staticmethod
+    def bytes_to_byte_list(bytes_data: bytes, chunk: int) -> List[bytes]:
+        num_ints = int(len(bytes_data)/chunk)
+        byte_list = [bytes_data[i*chunk:(i+1)*chunk] for i in range(num_ints)]
+        return byte_list  # Still padded to ADDRESS_LENGTH
+
+    def bytes_to_int_list(self, byte_data: bytes) -> List[int]:
+        """ Converts byte data containing ADDRESS_LENGTH size ints """
+        byte_list = self.bytes_to_byte_list(byte_data, chunk=ADDRESS_LENGTH)
+        int_list = [self.bytes_to_int(b) for b in byte_list]
         return int_list
 
-    def str_to_bytes(self, string, pad_to = MAX_FILENAME_LENGTH):
-        """ Converts str to bytes and pads to max filename length using spaces """
+    """ str <---> bytes conversions """
+    @staticmethod
+    def str_to_bytes(string: str, pad_to: int = MAX_FILENAME_LENGTH) -> bytes:
+        """
+        Converts str to bytes and pads using spaces (\x20).
+        Padding applied only if it is longer than the input.
+        """
         b = str.encode(string)
-        return b + b''.join([str.encode(' ')]*(MAX_FILENAME_LENGTH-len(b)))
+        return b + b''.join([str.encode(' ')]*(pad_to-len(b)))
 
-    def str_list_to_bytes(self, str_list):
-        """ Converts list of ints to bytes of ADDRESS_LENGTH length using Little Endian byte order"""
-        b = b''.join([self.str_to_bytes(x) for x in str_list])
-        # b = struct.pack('i'*len(int_list), *int_list)
-        # if pad:
-        #     b = self.pad_bytes_to_block(b)
+    def str_list_to_bytes(self, str_list: List[str], pad_to: int = MAX_FILENAME_LENGTH) -> bytes:
+        b = b''.join([self.str_to_bytes(x, pad_to=pad_to) for x in str_list])
         return b
 
-    def bytes_to_str(self, bytes):
-        return bytes.decode().rstrip('\x00')
+    @staticmethod
+    def bytes_to_str(bytes_data: bytes, strip: str = '\x20') -> str:
+        """Converts bytes to str and strips trailing bytes"""
+        return bytes_data.decode().rstrip(strip)
 
-    def bytes_to_str_list(self, byte_data):
+    def bytes_to_str_list(self, byte_data: bytes, strip: str='\x20') -> List[str]:
         """ Converts byte data containing MAX_FILENAME_LENGTH size strings. Data is also padded to BLOCK_SIZE"""
-        num_str = int(len(byte_data) / MAX_FILENAME_LENGTH)
-        byte_list = [byte_data[i * MAX_FILENAME_LENGTH:(i + 1) * MAX_FILENAME_LENGTH] for i in range(num_str)]
-        str_list = [self.bytes_to_str(b) for b in byte_list]
+        # num_str = int(len(byte_data) / MAX_FILENAME_LENGTH)
+        # byte_list = [byte_data[i * MAX_FILENAME_LENGTH:(i + 1) * MAX_FILENAME_LENGTH] for i in range(num_str)]
+        byte_list = self.bytes_to_byte_list(byte_data, chunk=MAX_FILENAME_LENGTH)
+        str_list = [self.bytes_to_str(b, strip) for b in byte_list]
         return str_list
 
     def __write__(self):
