@@ -1,4 +1,8 @@
-""" All low-level device IO classes and functions """
+"""
+All low-level device IO classes and functions
+
+Author: Angad Gill
+"""
 
 import io
 import os

@@ -7,8 +7,9 @@ All Inodes
 Inode Freelist
 Block Freelist
 Root Directory
+
+Author: Angad Gill
 """
-import math
 from typing import List
 import struct
 

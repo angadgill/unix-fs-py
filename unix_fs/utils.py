@@ -1,4 +1,8 @@
-""" All utility functions go here """
+"""
+All utility functions go here
+
+Author: Angad Gill
+"""
 from unix_fs import device_io
 from unix_fs import data_structures as ds
 

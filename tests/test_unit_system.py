@@ -1,4 +1,8 @@
-""" Unit tests for unix_fs/system.py """
+"""
+Unit tests for unix_fs/system.py
+
+Author: Angad Gill
+"""
 
 import os
 import unittest

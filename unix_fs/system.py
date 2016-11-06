@@ -1,4 +1,8 @@
-""" File/Directory level abstractions go here """
+"""
+File/Directory level abstractions go here
+
+Author: Angad Gill
+"""
 from typing import List, Tuple
 from unix_fs.data_structures import Inode, DataBlock, DirectoryBlock
 
