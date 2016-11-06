@@ -281,6 +281,8 @@ class TestInode(unittest.TestCase):
     def setUp(self):
         ds.BLOCK_SIZE = 50
         device_io.BLOCK_SIZE = 50
+        ds.INODE_NUM_DIRECT_BLOCKS = 5
+        ds.NUM_INODES = 10
         self.cls = ds.Inode()
         open(PATH, 'a').close()
 
@@ -289,7 +291,6 @@ class TestInode(unittest.TestCase):
         os.remove(PATH)
 
     def test_bytes(self):
-        ds.INODE_NUM_DIRECT_BLOCKS = 5
         self.cls = ds.Inode()
         self.cls.index = 2
         self.cls.i_type = 1
@@ -304,8 +305,7 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_write_1(self):
-        ds.INODE_NUM_DIRECT_BLOCKS = 5
-        expected = bytes(ds.BLOCK_SIZE)+\
+        expected = bytes(ds.BLOCK_SIZE)+ \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x02\x00\x00\x00\x00\x00\x00\x00' + \
@@ -322,9 +322,7 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_write_2(self):
-        device_io.BLOCK_SIZE = 50
-        ds.INODE_NUM_DIRECT_BLOCKS = 5
-        expected = bytes(ds.BLOCK_SIZE * 3)+\
+        expected = bytes(ds.BLOCK_SIZE * 3)+ \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x02\x00\x00\x00\x00\x00\x00\x00' + \
@@ -341,7 +339,6 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_read_1(self):
-        ds.INODE_NUM_DIRECT_BLOCKS = 5
         input_data = bytes(ds.BLOCK_SIZE ) + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
@@ -357,7 +354,6 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_read_2(self):
-        ds.INODE_NUM_DIRECT_BLOCKS = 5
         input_data = bytes(ds.BLOCK_SIZE * 3) + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
@@ -371,6 +367,34 @@ class TestInode(unittest.TestCase):
         self.cls = ds.Inode(device=device_io.Disk(PATH), index=2)
         output = self.cls._items
         self.assertEqual(output, expected)
+
+    def test_allocate_with_device(self):
+        input_data = bytes(ds.BLOCK_SIZE) + \
+                     bytes(ds.NUM_INODES * ds.BLOCK_SIZE) + \
+                     bytes(ds.InodeFreeList())
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.Inode(device=device_io.Disk(PATH))
+        self.assertEqual(self.cls.index, None)  # New inode should have a None index
+        self.cls.allocate()
+        self.assertEqual(self.cls.index, 0)
+        with self.assertRaises(Exception):
+            self.cls.allocate()
+
+    def test_deallocate_with_device(self):
+        input_data = bytes(ds.BLOCK_SIZE) + \
+                     bytes(ds.NUM_INODES * ds.BLOCK_SIZE) + \
+                     bytes(ds.InodeFreeList())
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.Inode(device=device_io.Disk(PATH))
+        self.assertEqual(self.cls.index, None)  # New inode should have a None index
+        self.cls.allocate()
+        self.assertEqual(self.cls.index, 0)
+        self.cls.deallocate()
+        self.assertEqual(self.cls.index, None)
+        with self.assertRaises(Exception):
+            self.cls.deallocate()
 
 
 class TestFreeList(unittest.TestCase):

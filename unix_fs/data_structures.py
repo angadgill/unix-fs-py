@@ -246,12 +246,17 @@ class Inode(Block):
         return self._index0_block_address + self.index
 
     def allocate(self):
-        ifree = InodeFreeList(self._device)
-        self.index = ifree.allocate()
+        if self.index is None:
+            self.index = InodeFreeList(self._device).allocate()
+        else:
+            raise Exception("{} already allocated at index {}".format(self.__class__, self.index))
 
     def deallocate(self):
-        ifree = InodeFreeList(self._device)
-        ifree.deallocate(self.index)
+        if self.index is not None:
+            InodeFreeList(self._device).deallocate(self.index)
+            self.index = None
+        else:
+            raise Exception("{} is not allocated".format(self.__class__))
 
 
 class DirectoryBlock(Block):
