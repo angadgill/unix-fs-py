@@ -13,7 +13,7 @@ from typing import List
 import struct
 
 BLOCK_SIZE = 50
-NUM_BLOCKS = 100
+NUM_DATA_BLOCKS = 100
 ADDRESS_LENGTH = 4  # bytes # Not using this! All addresses are 8 bytes (long int)
 
 NUM_INODES = 10
@@ -95,8 +95,11 @@ class Block(Base):
 
     def __init__(self, device=None):
         self._device = device
-        self.address = 0  # type: int
         self._format = ''  # type: str # Packing format for list self._item
+
+    @property
+    def address(self) -> int:
+        return 0
 
     @property
     def _items(self) -> List:
@@ -125,9 +128,9 @@ class Block(Base):
         self._device.seek(self.address)
         self._device.write(self.__bytes__())
 
-    def __decode__(self, byte_data):
+    def __decode__(self, byte_data) -> List:
         byte_data = byte_data[:self._size]  # truncate to remove padding bytes
-        return struct.unpack(self._format, byte_data)
+        return list(struct.unpack(self._format, byte_data))
 
     def __read__(self):
         self._device.seek(self.address)
@@ -137,10 +140,10 @@ class Block(Base):
 
 class SuperBlock(Block):
     def __init__(self, device=None):
-        super().__init__(device)
+        super().__init__(device=device)
+        self._format = 'll'
         self.block_size = BLOCK_SIZE
         self.num_inodes = NUM_INODES
-        self._format = 'll'
         if device is not None:
             self.__read__()
 
@@ -153,110 +156,93 @@ class SuperBlock(Block):
         [self.block_size, self.num_inodes] = value
 
 
-class Inode(Block):
-    """ Base class for files and directories  """
-    index0_address = BLOCK_SIZE
+class FreeList(Block):
+    def __init__(self, n=0, device=None):
+        super().__init__(device=device)
+        self.list = [True] * n
+        self._format = '{}?'.format(n)  # format as n booleans
 
-    def __init__(self, itype, device, index=None):
-        self._device = device
-
-        # default initialization
-        self.index = None
-        self.itype = itype
-        self.address_direct = [0] * INODE_NUM_DIRECT_BLOCKS
-        self.address_1_indirect = [0] * INODE_NUM_1_INDIRECT_BLOCKS
-
-        # If no index is provided, allocate new inode
-        if index is None:
-            self.allocate()
-        else: # else, read inode from device
-            self.index = index
+        if device is not None:
             self.__read__()
 
-    def __bytes__(self):
-        # return self.pad_bytes_to_block(self.c_long_list_to_bytes(self.address_direct))
-        data = self.itype + self.address_direct + self.address_1_indirect
-        return self.int_list_to_bytes(data)
+    @property
+    def _items(self):
+        return self.list
 
-    def __read__(self):
-        self._device.seek(self.address)
-        data = self._device.read(BLOCK_SIZE)
-        int_list = self.bytes_to_int_list(data)
-        self.itype = int_list[:1]
-        start = 1
-        end = start + INODE_NUM_DIRECT_BLOCKS
-        self.address_direct = int_list[start:end]
-        start = end
-        end = start + INODE_NUM_1_INDIRECT_BLOCKS
-        self.address_1_indirect = int_list[start:end]
+    @_items.setter
+    def _items(self, value):
+        self.list = value
+
+    def allocate(self, write_back: bool = True) -> int:
+        """ Finds the first free item and returns index """
+        for i, item in enumerate(self.list):
+            if item:  # is true
+                self.list[i] = False
+                if write_back:
+                    self.__write__()
+                return i
+        else:
+            raise Exception('No free items in {}.'.format(self.__class__))
+
+    def deallocate(self, index: int, write_back: bool = True) -> None:
+        self.list[index] = True
+        if write_back:
+            self.__write__()
+
+
+class InodeFreeList(FreeList):
+    def __init__(self, device=None):
+        super().__init__(n=NUM_INODES, device=device)
+
+
+class DataBlockFreeList(FreeList):
+    def __init__(self, device=None):
+        super().__init__(n=NUM_DATA_BLOCKS, device=device)
+
+
+class Inode(Block):
+    """ Base class for files and directories  """
+
+    def __init__(self, itype=0, device=None, index=None):
+        super().__init__(device=device)
+        self._index0_address = BLOCK_SIZE
+
+        # default initialization
+        self.index = index
+        self.i_type = itype
+        self.address_direct = [0] * INODE_NUM_DIRECT_BLOCKS
+
+        self._format = 'l{}l'.format(len(self.address_direct))
+
+        if device is not None and index is not None:
+            self.__read__()
 
     @property
-    def address(self):
-        """ Return block address """
-        return self.index0_address + self.index*BLOCK_SIZE
+    def _items(self):
+        return [self.i_type, *self.address_direct]
 
-    def allocate(self):
-        ifree = InodeFreeList(self._device)
-        self.index = ifree.allocate()
+    @_items.setter
+    def _items(self, value):
+        self.i_type = value[0]
+        self.address_direct = value[1:1 + len(self.address_direct)]
 
-    def deallocate(self):
-        ifree = InodeFreeList(self._device)
-        ifree.deallocate(self.index)
+    @property
+    def address(self) -> int:
+        return self._index0_address + self.index * BLOCK_SIZE
 
-
-
-class File(Inode):
-    def __init__(self, device, index=None):
-        super().__init__(itype=1, device=device, index=index)
-
-    def write(self, data):
-        block = DataBlock(self._device)
-        self.add_block_to_list(block)
-        block.__write__(data)
-
-    def read(self):
-        """ Reads and returns the first block, for now """
-        block = DataBlock(self._device, self.address_direct[0])
-        return block.__read__()
-
-    def add_block_to_list(self, block):
-        # Find the first spot to add the block index to
-        for i in range(len(self.address_direct)):
-            if self.address_direct[i] == 0:
-                self.address_direct[i] = block.index
-                break
-        else:
-             raise Exception('File full')
-        self.__write__()
-
-
-class Directory(Inode):
-    def __init__(self, device, index=None):
-        super().__init__(itype=2, device=device, index=index)
-
-    def write(self, data):
-        block = Directory(self._device)
-        self.add_block_to_list(block)
-        block.__write__(data)
-
-    def read(self):
-        """ Reads and returns the first block, for now """
-        block = DataBlock(self._device, self.address_direct[0])
-        return block.__read__()
-
-    def add_block_to_list(self, block):
-        # Find the first spot to add the block index to
-        for i in range(len(self.address_direct)):
-            if self.address_direct[i] == 0:
-                self.address_direct[i] = block.index
-                break
-        else:
-             raise Exception('File full')
-        self.__write__()
+        #     def allocate(self):
+        #         ifree = InodeFreeList(self._device)
+        #         self.index = ifree.allocate()
+        #
+        #     def deallocate(self):
+        #         ifree = InodeFreeList(self._device)
+        #         ifree.deallocate(self.index)
+        #
 
 
 class DirectoryBlock(Block):
     """ Data written to the block pointed to by the Directory Inode """
+
     def __init__(self, name):
         self.name = name
         self.filenames = [''] * NUM_FILES_PER_DIR
@@ -280,78 +266,10 @@ class DirectoryBlock(Block):
         print(self.inode_numbers)
 
 
-class InodeFreeListBootstrap(Block):
-    def __init__(self):
-        self.list = [True] * NUM_INODES  # list of booleans. True means inode is free.
-
-    def __bytes__(self):
-        return self.int_list_to_bytes(self.list)
-
-
-class InodeFreeList(InodeFreeListBootstrap):
-    address = BLOCK_SIZE * (1 + NUM_INODES)
-
-    def __init__(self, device):
-        super().__init__()
-        self._device = device
-        self.__read__()
-
-    def allocate(self):
-        """ Finds the first free block and returns block index """
-        for i in range(len(self.list)):
-            if self.list[i] == 1:
-                self.list[i] = 0
-                self.__write__()
-                return i
-
-    def deallocate(self, index):
-        self.list[index] = 1
-        self.__write__()
-
-    def __read__(self):
-        self._device.seek(self.address)
-        data = self._device.read(len(bytes(InodeFreeListBootstrap())))
-        self.list = self.bytes_to_int_list(data)
-
-
-class BlockFreeListBootstrap(Block):
-    def __init__(self):
-        self.list = [True] * NUM_BLOCKS
-
-    def __bytes__(self):
-        return self.int_list_to_bytes(self.list)
-
-
-class BlockFreelist(BlockFreeListBootstrap):
-    address = BLOCK_SIZE * (1 + NUM_INODES) + len(bytes(InodeFreeListBootstrap()))
-
-    def __init__(self, device):
-        super().__init__()
-        self._device = device
-        self.__read__()
-
-    def allocate(self):
-        """ Finds the first free block and returns block index """
-        for i in range(len(self.list)):
-            if self.list[i] == 1:
-                self.list[i] = 0
-                self.__write__()
-                return i
-
-    def deallocate(self, index):
-        self.list[index] = 1
-        self.__write__()
-
-    def __read__(self):
-        self._device.seek(self.address)
-        data = self._device.read(len(bytes(InodeFreeListBootstrap())))
-        self.list = self.bytes_to_int_list(data)
-
-
 class DataBlock(Block):
     index0_address = BLOCK_SIZE + (BLOCK_SIZE * NUM_INODES) + \
-                     len(bytes(InodeFreeListBootstrap())) + \
-                     len(bytes(BlockFreeListBootstrap())) + \
+                     len(bytes(InodeFreeList())) + \
+                     len(bytes(DataBlockFreeList())) + \
                      len(bytes(DirectoryBlock('/')))
 
     def __init__(self, device, index=None):
@@ -374,11 +292,11 @@ class DataBlock(Block):
         return self.index0_address + self.index*BLOCK_SIZE
 
     def allocate(self):
-        bfree = BlockFreelist(self._device)
+        bfree = DataBlockFreelist(self._device)
         self.index = bfree.allocate()
 
     def deallocate(self):
-        bfree = BlockFreelist(self._device)
+        bfree = DataBlockFreelist(self._device)
         bfree.deallocate(self.index)
 
     def __write__(self, data):
@@ -392,3 +310,5 @@ class DataBlock(Block):
         self._device.seek(self.address)
         data = self._device.read(BLOCK_SIZE)
         return self.bytes_to_str(data)
+
+
