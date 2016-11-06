@@ -99,6 +99,7 @@ class Block(Base):
 
     @property
     def address(self) -> int:
+        """ Block address of the object on disk """
         return 0
 
     @property
@@ -194,10 +195,25 @@ class InodeFreeList(FreeList):
     def __init__(self, device=None):
         super().__init__(n=NUM_INODES, device=device)
 
+    @property
+    def address(self) -> int:
+        byte_address = len(bytes(SuperBlock())) + \
+                       len(bytes(Inode()) * NUM_INODES)
+        block_address = int(byte_address/BLOCK_SIZE)
+        return block_address
+
 
 class DataBlockFreeList(FreeList):
     def __init__(self, device=None):
         super().__init__(n=NUM_DATA_BLOCKS, device=device)
+
+    @property
+    def address(self) -> int:
+        byte_address = len(bytes(SuperBlock())) + \
+                       len(bytes(Inode()) * NUM_INODES) + \
+                       len(bytes(InodeFreeList()))
+        block_address = int(byte_address/BLOCK_SIZE)
+        return block_address
 
 
 class Inode(Block):
@@ -205,9 +221,8 @@ class Inode(Block):
 
     def __init__(self, itype=0, device=None, index=None):
         super().__init__(device=device)
-        self._index0_address = BLOCK_SIZE
+        self._index0_block_address = 1
 
-        # default initialization
         self.index = index
         self.i_type = itype
         self.address_direct = [0] * INODE_NUM_DIRECT_BLOCKS
@@ -228,16 +243,15 @@ class Inode(Block):
 
     @property
     def address(self) -> int:
-        return self._index0_address + self.index * BLOCK_SIZE
+        return self._index0_block_address + self.index
 
-        #     def allocate(self):
-        #         ifree = InodeFreeList(self._device)
-        #         self.index = ifree.allocate()
-        #
-        #     def deallocate(self):
-        #         ifree = InodeFreeList(self._device)
-        #         ifree.deallocate(self.index)
-        #
+    def allocate(self):
+        ifree = InodeFreeList(self._device)
+        self.index = ifree.allocate()
+
+    def deallocate(self):
+        ifree = InodeFreeList(self._device)
+        ifree.deallocate(self.index)
 
 
 class DirectoryBlock(Block):

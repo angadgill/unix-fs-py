@@ -249,6 +249,7 @@ class TestSuperBlock(unittest.TestCase):
 
     def test_write_1(self):
         ds.BLOCK_SIZE = 30
+        device_io.BLOCK_SIZE = 30
         ds.NUM_INODES = 10
         expected = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
@@ -262,6 +263,8 @@ class TestSuperBlock(unittest.TestCase):
 
     def test_write_2(self):
         ds.BLOCK_SIZE = 20
+        device_io.BLOCK_SIZE = 20
+        device_io.BLOCK_SIZE = 20
         ds.NUM_INODES = 10
         expected = b'\x14\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
@@ -276,6 +279,8 @@ class TestSuperBlock(unittest.TestCase):
 
 class TestInode(unittest.TestCase):
     def setUp(self):
+        ds.BLOCK_SIZE = 50
+        device_io.BLOCK_SIZE = 50
         self.cls = ds.Inode()
         open(PATH, 'a').close()
 
@@ -284,7 +289,6 @@ class TestInode(unittest.TestCase):
         os.remove(PATH)
 
     def test_bytes(self):
-        ds.BLOCK_SIZE = 50
         ds.INODE_NUM_DIRECT_BLOCKS = 5
         self.cls = ds.Inode()
         self.cls.index = 2
@@ -300,9 +304,8 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_write_1(self):
-        ds.BLOCK_SIZE = 50
         ds.INODE_NUM_DIRECT_BLOCKS = 5
-        expected = bytes(50)+\
+        expected = bytes(ds.BLOCK_SIZE)+\
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x02\x00\x00\x00\x00\x00\x00\x00' + \
@@ -319,9 +322,9 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_write_2(self):
-        ds.BLOCK_SIZE = 50
+        device_io.BLOCK_SIZE = 50
         ds.INODE_NUM_DIRECT_BLOCKS = 5
-        expected = bytes(150)+\
+        expected = bytes(ds.BLOCK_SIZE * 3)+\
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x02\x00\x00\x00\x00\x00\x00\x00' + \
@@ -338,9 +341,8 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_read_1(self):
-        ds.BLOCK_SIZE = 50
         ds.INODE_NUM_DIRECT_BLOCKS = 5
-        input_data = bytes(50) + \
+        input_data = bytes(ds.BLOCK_SIZE ) + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x02\x00\x00\x00\x00\x00\x00\x00' + \
@@ -355,9 +357,8 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_read_2(self):
-        ds.BLOCK_SIZE = 50
         ds.INODE_NUM_DIRECT_BLOCKS = 5
-        input_data = bytes(150) + \
+        input_data = bytes(ds.BLOCK_SIZE * 3) + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x02\x00\x00\x00\x00\x00\x00\x00' + \
@@ -375,6 +376,7 @@ class TestInode(unittest.TestCase):
 class TestFreeList(unittest.TestCase):
     def setUp(self):
         ds.BLOCK_SIZE = 20
+        device_io.BLOCK_SIZE = 20
         self.cls = ds.FreeList(n=10)
         open(PATH, 'a').close()
 
@@ -426,7 +428,7 @@ class TestFreeList(unittest.TestCase):
             for _ in range(11):
                 i = self.cls.allocate(write_back=False)
 
-    def test_deallocate(self):
+    def test_deallocate_no_device(self):
         for i in range(2):
             _ = self.cls.allocate(write_back=False)
         self.cls.deallocate(index=0, write_back=False)
@@ -434,21 +436,116 @@ class TestFreeList(unittest.TestCase):
         expected = [True, False] + [True]*8
         self.assertEqual(output, expected)
 
+    def test_allocate_with_device(self):
+        input_data = b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.FreeList(n=10, device=device_io.Disk(PATH))
+        for i in range(3):
+            _ = self.cls.allocate(write_back=False)
+        output = self.cls.list
+        expected = [False]*3 + [True]*7
+        self.assertEqual(output, expected)
+
+    def test_deallocate_with_device(self):
+        input_data = b'\x00\x00\x00\x00\x01\x01\x01\x01\x01\x01' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.FreeList(n=10, device=device_io.Disk(PATH))
+        self.cls.deallocate(index=1)
+        output = self.cls.list
+        expected = [False, True, False, False] + [True]*6
+        self.assertEqual(output, expected)
+
 
 class TestInodeFreeList(TestFreeList):
     def setUp(self):
         ds.BLOCK_SIZE = 20
+        device_io.BLOCK_SIZE = 20
         ds.NUM_INODES = 10
         self.cls = ds.InodeFreeList()
         open(PATH, 'a').close()
 
+    def test_write(self):
+        expected = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01' + \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.__write__()
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
 
-class TestDataBlockFreeList(TestFreeList):
+    def test_allocate_with_device(self):
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.InodeFreeList(device=device_io.Disk(PATH))
+        for i in range(3):
+            _ = self.cls.allocate(write_back=False)
+        output = self.cls.list
+        expected = [False]*3 + [True]*7
+        self.assertEqual(output, expected)
+
+    def test_deallocate_with_device(self):
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'\x00\x00\x00\x00\x01\x01\x01\x01\x01\x01' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.InodeFreeList(device=device_io.Disk(PATH))
+        self.cls.deallocate(index=1)
+        output = self.cls.list
+        expected = [False, True, False, False] + [True]*6
+        self.assertEqual(output, expected)
+
+
+class TestDataBlockFreelist(TestFreeList):
     def setUp(self):
         ds.BLOCK_SIZE = 20
+        device_io.BLOCK_SIZE = 20
         ds.NUM_DATA_BLOCKS = 10
         self.cls = ds.DataBlockFreeList()
         open(PATH, 'a').close()
+
+    def test_write(self):
+        expected = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01' + \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.__write__()
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
+
+    def test_allocate_with_device(self):
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.DataBlockFreeList(device=device_io.Disk(PATH))
+        for i in range(3):
+            _ = self.cls.allocate(write_back=False)
+        output = self.cls.list
+        expected = [False]*3 + [True]*7
+        self.assertEqual(output, expected)
+
+    def test_deallocate_with_device(self):
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'\x00\x00\x00\x00\x01\x01\x01\x01\x01\x01' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.DataBlockFreeList(device=device_io.Disk(PATH))
+        self.cls.deallocate(index=1)
+        output = self.cls.list
+        expected = [False, True, False, False] + [True]*6
+        self.assertEqual(output, expected)
 
 
 if __name__ == '__main__':

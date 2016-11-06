@@ -25,16 +25,16 @@ class Disk(object):
     def close(self):
         self._disk.close()
 
-    def read(self, n=1):
+    def read(self, n_blocks = 1):
         """ Read n blocks """
-        return self._disk.read(n*BLOCK_SIZE)
+        return self._disk.read(n_blocks * BLOCK_SIZE)
 
     def write(self, b):
         """ Write bytearray b. Returns int n: number of bytes written """
         n = self._disk.write(b)
         return n  # number of bytes actually written
 
-    def seek(self, pos):
-        """ Seek to integer pos. Does not return anything."""
-        self._disk.seek(pos)
+    def seek(self, block_pos):
+        """ Seek to integer block position. Does not return anything."""
+        self._disk.seek(block_pos * BLOCK_SIZE)
 
