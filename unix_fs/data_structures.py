@@ -280,12 +280,13 @@ class Inode(AllocableBLock):
                 index_last_assigned = address
         return index_last_assigned
 
-    def _add_to_address_list(self, block) -> None:
+    def _add_to_address_list(self, block, write_back=True) -> None:
         # Find the first spot to add the block index to
         for i in range(len(self.address_direct)):
             if self.address_direct[i] == 0:
                 self.address_direct[i] = block.index
-                self.__write__()
+                if write_back:
+                    self.__write__()
                 break
         else:
             raise Exception('File full')
@@ -317,8 +318,7 @@ class DataBlock(AllocableBLock):
         index_0_byte_address = len(bytes(SuperBlock())) + \
                        len(bytes(Inode()) * NUM_INODES) + \
                        len(bytes(InodeFreeList())) + \
-                       len(bytes(DataBlockFreeList())) + \
-                       BLOCK_SIZE  # for the root directory
+                       len(bytes(DataBlockFreeList()))  # + BLOCK_SIZE  # for the root directory
         index_0_block_address = int(index_0_byte_address/BLOCK_SIZE)
         return index_0_block_address + self.index
 

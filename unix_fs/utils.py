@@ -18,10 +18,13 @@ def makefs(root_path, verbose=False):
     bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_INODES)
     bootstrap_data += bytes(ds.InodeFreeList())
     bootstrap_data += bytes(ds.DataBlockFreeList())
+    # TODO: Update to real directory write
     bootstrap_data += bytes(ds.DirectoryBlock('/'))
     bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_DATA_BLOCKS)
     disk = device_io.Disk(root_path)
     disk.open()
     disk.seek(0)
     disk.write(bootstrap_data)
+    # TODO: remove this hack when real root directory is written
+    ds.DataBlockFreeList(device=disk).allocate()
     disk.close()

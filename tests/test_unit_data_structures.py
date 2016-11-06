@@ -384,6 +384,12 @@ class TestInode(TestDataStructures):
         output = self.cls._last_assigned_address()
         self.assertEqual(output, 3)
 
+    def test_add_to_address_list(self):
+        block = ds.DataBlock()
+        block.index = 1
+        self.cls._add_to_address_list(block=block, write_back=False)
+        self.assertEqual(self.cls.address_direct, [1, 0, 0, 0, 0])
+
 
 class TestFreeList(TestDataStructures):
     def setUp(self):
