@@ -174,20 +174,20 @@ class FreeList(Block):
     def _items(self, value):
         self.list = value
 
-    def allocate(self, write_back: bool = True) -> int:
+    def allocate(self, write_through: bool = True) -> int:
         """ Finds the first free item and returns index """
         for i, item in enumerate(self.list):
             if item:  # is true
                 self.list[i] = False
-                if write_back:
+                if write_through:
                     self.__write__()
                 return i
         else:
             raise Exception('No free items in {}.'.format(self.__class__))
 
-    def deallocate(self, index: int, write_back: bool = True) -> None:
+    def deallocate(self, index: int, write_through: bool = True) -> None:
         self.list[index] = True
-        if write_back:
+        if write_through:
             self.__write__()
 
 
@@ -280,12 +280,12 @@ class Inode(AllocableBLock):
                 index_last_assigned = address
         return index_last_assigned
 
-    def _add_to_address_list(self, block, write_back=True) -> None:
+    def _add_to_address_list(self, block, write_through=True) -> None:
         # Find the first spot to add the block index to
         for i in range(len(self.address_direct)):
             if self.address_direct[i] == 0:
                 self.address_direct[i] = block.index
-                if write_back:
+                if write_through:
                     self.__write__()
                 break
         else:
@@ -300,6 +300,8 @@ class DataBlock(AllocableBLock):
         self._format = '{}s'.format(BLOCK_SIZE)
         if device is not None and index is not None:
             self.__read__()
+        if device is not None and index is None:
+            self.allocate()
 
     @property
     def freelist(self) -> FreeList:  # List to check when allocating / deallocating
@@ -325,6 +327,18 @@ class DataBlock(AllocableBLock):
     def is_full(self) -> bool:
         self.__read__()
         return len(self.data) == BLOCK_SIZE
+
+    def append(self, new_data: str, write_through=True) -> str:
+        """ Append data to self.data up to BLOCK_SIZE. Return remaining """
+        if self.data is None:
+            end = BLOCK_SIZE
+            self.data = new_data[:end]
+        else:
+            end = BLOCK_SIZE - len(self.data)
+            self.data += new_data[:end]
+        if write_through:
+            self.__write__()
+        return new_data[end:]
 
 
 class DirectoryBlock(DataBlock):
@@ -354,7 +368,7 @@ class DirectoryBlock(DataBlock):
         self.entry_names = [self.bytes_to_str(v, strip='\x00') for v in value[1:1+NUM_FILES_PER_DIR_BLOCK]]
         self.entry_inode_indices = value[1+NUM_FILES_PER_DIR_BLOCK:]
 
-    def add_entry(self, entry_name, entry_inode_index, write_back=True):
+    def add_entry(self, entry_name, entry_inode_index, write_through=True):
         """ Add entry to Dir Block, in the first available location """
         if len(entry_name) > MAX_FILENAME_LENGTH:
             raise Exception('Given entry_name "" is too long (> {})'.format(entry_name, MAX_FILENAME_LENGTH))
@@ -363,20 +377,20 @@ class DirectoryBlock(DataBlock):
             if self.entry_names[i] == '' and self.entry_inode_indices[i] == 0:
                 self.entry_names[i] = entry_name
                 self.entry_inode_indices[i] = entry_inode_index
-                if write_back:
+                if write_through:
                     self.__write__()
                 break
         else:
             raise Exception('{} {} ("{}") full'.format(self.__class__, self.index, self.name))
 
-    def remove_entry(self, entry_name, entry_inode_index, write_back=True):
+    def remove_entry(self, entry_name, entry_inode_index, write_through=True):
         """ Remove entry based on name and index """
 
         for i in range(NUM_FILES_PER_DIR_BLOCK):
             if self.entry_names[i] == entry_name and self.entry_inode_indices[i] == entry_inode_index:
                 self.entry_names[i] = ''
                 self.entry_inode_indices[i] = 0
-                if write_back:
+                if write_through:
                     self.__write__()
                 break
         else:

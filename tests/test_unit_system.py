@@ -37,10 +37,28 @@ class TestFile(TestSystem):
         output = self.cls.freelist.list
         self.assertEqual(output, expected)
 
-    def test_write_read(self):
-        self.cls.write('test text')
-        # print(self.cls.address_direct)
-        # with open(PATH, 'rb') as f:
-        #     print(f.read())
+    def test_write_read_short(self):
+        input_text = ''.join(['t' for _ in range(ds.BLOCK_SIZE)])
+        self.cls.write(input_text)
         self.cls = system.File(device=device_io.Disk(PATH), index=0)
-        self.assertEqual(self.cls.read(), 'test text')
+        self.assertEqual(self.cls.read(), input_text)
+
+    def test_write_read_long(self):
+        input_text = ''.join(['t' for _ in range(ds.BLOCK_SIZE*2)])
+        self.cls.write(input_text)
+        self.cls = system.File(device=device_io.Disk(PATH), index=0)
+        self.assertEqual(self.cls.read(), input_text)
+
+    def test_multiple_write_partial_block_read(self):
+        input_text1 = ''.join(['t' for _ in range(int(ds.BLOCK_SIZE/2))])
+        input_text2 = ''.join(['t' for _ in range(ds.BLOCK_SIZE*2)])
+        self.cls.write(input_text1)
+        self.cls.write(input_text2)
+        self.cls = system.File(device=device_io.Disk(PATH), index=0)
+        output = self.cls.read()
+        self.assertEqual(output, input_text1+input_text2)
+
+    def test_write_overflow(self):
+        input_text = ''.join(['t' for _ in range(ds.BLOCK_SIZE*ds.INODE_NUM_DIRECT_BLOCKS + 1)])
+        with self.assertRaises(Exception):
+            self.cls.write(input_text)

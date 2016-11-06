@@ -14,24 +14,32 @@ class File(Inode):
 
         # Check to see if any DataBlock is already assigned
         if sum(self.address_direct) != 0:
-            # If assigned, check to see if last assigned DataBlock is full
+            # If assigned, append data to last block
             last_assigned = self._last_assigned_address()
-            # If assigned and if last is full, assign a new DataBlock
+            block = DataBlock(device=self._device, index=last_assigned)
+            excess_data = block.append(data)
         else:
-            # If not assigned, assign a new one and add to Inode
-            # Split data into BLOCK_SIZE chunks
-            block = DataBlock(self._device)
-            block.allocate()
-            self._add_to_address_list(block)
+            excess_data = data
 
-            # Write to DataBlock
-            block.data = data
+        # Add all excess data into new blocks
+        while len(excess_data) > 0:
+            # assign a new block and add to Inode
+            block = DataBlock(device=self._device)
+            self._add_to_address_list(block)
+            # Write to block
+            excess_data = block.append(excess_data)
             block.__write__()
 
     def read(self):
         """ Reads and returns the first block, for now """
-        block = DataBlock(device=self._device, index=self.address_direct[0])
-        return block.data
+        data = ''
+        for address in self.address_direct:
+            if address != 0:
+                block = DataBlock(device=self._device, index=address)
+                data += block.data
+            else:
+                break
+        return data
 
 
 class Directory(Inode):

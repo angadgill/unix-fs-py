@@ -387,7 +387,7 @@ class TestInode(TestDataStructures):
     def test_add_to_address_list(self):
         block = ds.DataBlock()
         block.index = 1
-        self.cls._add_to_address_list(block=block, write_back=False)
+        self.cls._add_to_address_list(block=block, write_through=False)
         self.assertEqual(self.cls.address_direct, [1, 0, 0, 0, 0])
 
 
@@ -430,14 +430,14 @@ class TestFreeList(TestDataStructures):
         self.assertEqual(output, expected)
 
     def test_allocate_no_device_1(self):
-        _ = self.cls.allocate(write_back=False)
+        _ = self.cls.allocate(write_through=False)
         output = self.cls.list
         expected = [False] + [True]*9
         self.assertEqual(output, expected)
 
     def test_allocate_no_device_2(self):
         for i in range(3):
-            _ = self.cls.allocate(write_back=False)
+            _ = self.cls.allocate(write_through=False)
         output = self.cls.list
         expected = [False]*3 + [True]*7
         self.assertEqual(output, expected)
@@ -446,12 +446,12 @@ class TestFreeList(TestDataStructures):
         # over allocate
         with self.assertRaises(Exception):
             for _ in range(11):
-                i = self.cls.allocate(write_back=False)
+                i = self.cls.allocate(write_through=False)
 
     def test_deallocate_no_device(self):
         for i in range(2):
-            _ = self.cls.allocate(write_back=False)
-        self.cls.deallocate(index=0, write_back=False)
+            _ = self.cls.allocate(write_through=False)
+        self.cls.deallocate(index=0, write_through=False)
         output = self.cls.list
         expected = [True, False] + [True]*8
         self.assertEqual(output, expected)
@@ -463,7 +463,7 @@ class TestFreeList(TestDataStructures):
             f.write(input_data)
         self.cls = ds.FreeList(n=10, device=device_io.Disk(PATH))
         for i in range(3):
-            _ = self.cls.allocate(write_back=False)
+            _ = self.cls.allocate(write_through=False)
         output = self.cls.list
         expected = [False]*3 + [True]*7
         self.assertEqual(output, expected)
@@ -506,7 +506,7 @@ class TestInodeFreeList(TestFreeList):
             f.write(input_data)
         self.cls = ds.InodeFreeList(device=device_io.Disk(PATH))
         for i in range(3):
-            _ = self.cls.allocate(write_back=False)
+            _ = self.cls.allocate(write_through=False)
         output = self.cls.list
         expected = [False]*3 + [True]*7
         self.assertEqual(output, expected)
@@ -550,7 +550,7 @@ class TestDataBlockFreelist(TestFreeList):
             f.write(input_data)
         self.cls = ds.DataBlockFreeList(device=device_io.Disk(PATH))
         for i in range(3):
-            _ = self.cls.allocate(write_back=False)
+            _ = self.cls.allocate(write_through=False)
         output = self.cls.list
         expected = [False]*3 + [True]*7
         self.assertEqual(output, expected)
@@ -564,7 +564,7 @@ class TestDataBlockFreelist(TestFreeList):
         self.cls = ds.DataBlockFreeList(device=device_io.Disk(PATH))
         with self.assertRaises(Exception):
             for i in range(11):
-                _ = self.cls.allocate(write_back=False)
+                _ = self.cls.allocate(write_through=False)
 
     def test_deallocate_with_device(self):
         input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
@@ -647,14 +647,14 @@ class TestDirectoryBlock(TestDataStructures):
         self.assertEqual(self.cls.entry_inode_indices, list(range(5)))
 
     def test_add_entry_no_device_1(self):
-        self.cls.add_entry('f', 1, write_back=False)
+        self.cls.add_entry('f', 1, write_through=False)
         self.assertEqual(self.cls.entry_names, ['f', '', '', '', ''])
         self.assertEqual(self.cls.entry_inode_indices, [1, 0, 0, 0, 0])
 
     def test_add_entry_no_device_2(self):
-        self.cls.add_entry('f1', 1, write_back=False)
-        self.cls.add_entry('f2', 2, write_back=False)
-        self.cls.add_entry('f3', 3, write_back=False)
+        self.cls.add_entry('f1', 1, write_through=False)
+        self.cls.add_entry('f2', 2, write_through=False)
+        self.cls.add_entry('f3', 3, write_through=False)
         self.assertEqual(self.cls.entry_names,
                          ['f1', 'f2', 'f3', '', ''])
         self.assertEqual(self.cls.entry_inode_indices, [1, 2, 3, 0, 0])
@@ -662,7 +662,7 @@ class TestDirectoryBlock(TestDataStructures):
     def test_remove_entry_no_device_1(self):
         self.cls.entry_names = ['f1', 'f2', 'f3', '', '']
         self.cls.entry_inode_indices = [1, 2, 3, 0, 0]
-        self.cls.remove_entry('f1', 1, write_back=False)
+        self.cls.remove_entry('f1', 1, write_through=False)
         self.assertEqual(self.cls.entry_names,
                          ['', 'f2', 'f3', '', ''])
         self.assertEqual(self.cls.entry_inode_indices, [0, 2, 3, 0, 0])
@@ -670,8 +670,8 @@ class TestDirectoryBlock(TestDataStructures):
     def test_remove_add_entry_no_device_1(self):
         self.cls.entry_names = ['f1', 'f2', 'f3', '', '']
         self.cls.entry_inode_indices = [1, 2, 3, 0, 0]
-        self.cls.remove_entry('f1', 1, write_back=False)
-        self.cls.add_entry('f4', 4, write_back=False)
+        self.cls.remove_entry('f1', 1, write_through=False)
+        self.cls.add_entry('f4', 4, write_through=False)
         self.assertEqual(self.cls.entry_names,
                          ['f4', 'f2', 'f3', '', ''])
         self.assertEqual(self.cls.entry_inode_indices, [4, 2, 3, 0, 0])
@@ -679,11 +679,11 @@ class TestDirectoryBlock(TestDataStructures):
     def test_add_entry_overflow_no_device(self):
         with self.assertRaises(Exception):
             for i in range(ds.NUM_FILES_PER_DIR_BLOCK + 1):
-                self.cls.add_entry('f{}'.format(i), i, write_back=False)
+                self.cls.add_entry('f{}'.format(i), i, write_through=False)
 
     def test_remove_entry_doesnt_exist_no_device(self):
         with self.assertRaises(Exception):
-            self.cls.remove_entry('random_name', 4, write_back=False)
+            self.cls.remove_entry('random_name', 4, write_through=False)
 
     def test_add_item_with_device(self):
         self.cls = ds.DirectoryBlock(index=0)
@@ -786,6 +786,31 @@ class TestDataBlock(TestDataStructures):
             f.write(input_data)
         self.cls = ds.DataBlock(device=device_io.Disk(PATH), index=0)
         self.assertFalse(self.cls.is_full())
+
+    def test_append_with_device(self):
+        self.cls = ds.DataBlock(index=0)
+        expected = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                   b'this is test data\x00\x00\x00'
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.data = 'this is'
+        self.cls.append(' test data')
+        self.cls.__write__()
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
+
+    def test_append_return_no_device_1(self):
+        self.cls = ds.DataBlock()
+        self.cls.data = 'this is'
+        extra_data = self.cls.append(' test data   that is really really long', write_through=False)
+        self.assertEqual(self.cls.data, 'this is test data   ')
+        self.assertEqual(extra_data, 'that is really really long')
+
+    def test_append_return_no_device_2(self):
+        self.cls = ds.DataBlock()
+        extra_data = self.cls.append('this is test data   that is really really long', write_through=False)
+        self.assertEqual(self.cls.data, 'this is test data   ')
+        self.assertEqual(extra_data, 'that is really really long')
 
 
 if __name__ == '__main__':

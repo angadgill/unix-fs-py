@@ -18,8 +18,8 @@ def makefs(root_path, verbose=False):
     bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_INODES)
     bootstrap_data += bytes(ds.InodeFreeList())
     bootstrap_data += bytes(ds.DataBlockFreeList())
-    # TODO: Update to real directory write
-    bootstrap_data += bytes(ds.DirectoryBlock('/'))
+    # TODO: Update write a real root directory
+    bootstrap_data += bytes(ds.DirectoryBlock())
     bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_DATA_BLOCKS)
     disk = device_io.Disk(root_path)
     disk.open()
