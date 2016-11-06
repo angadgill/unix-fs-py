@@ -1,44 +1,30 @@
-""" All unit tests for the file system """
+""" All unit tests for unix_fs/data_structures """
 
 import os
 import unittest
+from importlib import reload
 
 from unix_fs import device_io
 from unix_fs import data_structures as ds
 
 PATH = 'temp_unit_test_file'
 
-""" device_io.py """
+
+class TestDataStructures(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # reload modules where global variables are touched
+        reload(device_io)
+        reload(ds)
+
+    @classmethod
+    def tearDownClass(cls):
+        # reload modules where global variables are touched
+        reload(device_io)
+        reload(ds)
 
 
-class TestDisk(unittest.TestCase):
-    def setUp(self):
-        """ Executed before each test case """
-        open(PATH, 'a').close()  # create file
-        b = bytearray([12, 12, 12])
-        f = device_io.Disk(PATH)
-        f.open()
-        f.write(b)
-        f.close()
-
-    def tearDown(self):
-        """ Executed after each test case """
-        os.remove(PATH)
-
-    # def test_seek_read(self):
-    #     b = bytearray([12, 12, 12])
-    #     f = device_io.Disk(PATH)
-    #     f.open()
-    #     f.seek(0)
-    #     b2 = f.read(len(b))
-    #     f.close()
-    #     self.assertEqual(b, b2)
-    #
-
-""" data_structure.py """
-
-
-class TestBase(unittest.TestCase):
+class TestBase(TestDataStructures):
     def setUp(self):
         self.cls = ds.Base()
 
@@ -175,7 +161,7 @@ class TestBase(unittest.TestCase):
         self.assertEqual(output, expected)
 
 
-class TestSuperBlock(unittest.TestCase):
+class TestSuperBlock(TestDataStructures):
     def setUp(self):
         self.cls = ds.SuperBlock()
         open(PATH, 'a').close()
@@ -214,7 +200,6 @@ class TestSuperBlock(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_decode_no_device(self):
-        ds.BLOCK_SIZE = 0  # precaution
         self.cls = ds.SuperBlock(None)
         input_data = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
@@ -224,7 +209,6 @@ class TestSuperBlock(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_read_1(self):
-        ds.BLOCK_SIZE = 0  # precaution
         input_data = b'\x1e\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
@@ -236,7 +220,6 @@ class TestSuperBlock(unittest.TestCase):
         self.assertEqual(self.cls.num_inodes, 10)
 
     def test_read_2(self):
-        ds.BLOCK_SIZE = 0  # precaution
         input_data = b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x0A\x00\x00\x00\x00\x00\x00\x00' + \
                      b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
@@ -277,7 +260,7 @@ class TestSuperBlock(unittest.TestCase):
         self.assertEqual(output, expected)
 
 
-class TestInode(unittest.TestCase):
+class TestInode(TestDataStructures):
     def setUp(self):
         ds.BLOCK_SIZE = 50
         device_io.BLOCK_SIZE = 50
@@ -369,7 +352,7 @@ class TestInode(unittest.TestCase):
         self.assertEqual(output, expected)
 
     def test_allocate_with_device(self):
-        input_data = bytes(ds.BLOCK_SIZE) + \
+        input_data = bytes(ds.SuperBlock()) + \
                      bytes(ds.NUM_INODES * ds.BLOCK_SIZE) + \
                      bytes(ds.InodeFreeList())
         with open(PATH, 'wb') as f:
@@ -396,8 +379,13 @@ class TestInode(unittest.TestCase):
         with self.assertRaises(Exception):
             self.cls.deallocate()
 
+    def test_find_last_assigned_address(self):
+        self.cls.address_direct = [1, 2, 3, 0, 0]
+        output = self.cls._last_assigned_address()
+        self.assertEqual(output, 3)
 
-class TestFreeList(unittest.TestCase):
+
+class TestFreeList(TestDataStructures):
     def setUp(self):
         ds.BLOCK_SIZE = 20
         device_io.BLOCK_SIZE = 20
@@ -407,6 +395,8 @@ class TestFreeList(unittest.TestCase):
     def tearDown(self):
         del self.cls
         os.remove(PATH)
+        reload(device_io)
+        reload(ds)
 
     def test_bytes(self):
         expected = b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01' + \
@@ -559,6 +549,17 @@ class TestDataBlockFreelist(TestFreeList):
         expected = [False]*3 + [True]*7
         self.assertEqual(output, expected)
 
+    def test_allocate_overflow_with_device(self):
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.DataBlockFreeList(device=device_io.Disk(PATH))
+        with self.assertRaises(Exception):
+            for i in range(11):
+                _ = self.cls.allocate(write_back=False)
+
     def test_deallocate_with_device(self):
         input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
                      b'\x00\x00\x00\x00\x01\x01\x01\x01\x01\x01' + \
@@ -572,7 +573,7 @@ class TestDataBlockFreelist(TestFreeList):
         self.assertEqual(output, expected)
 
 
-class TestDirectoryBlock(unittest.TestCase):
+class TestDirectoryBlock(TestDataStructures):
     def setUp(self):
         ds.BLOCK_SIZE = device_io.BLOCK_SIZE = 10
         ds.NUM_DATA_BLOCKS = 10
@@ -722,7 +723,7 @@ class TestDirectoryBlock(unittest.TestCase):
         self.assertEqual(output, expected)
 
 
-class TestDataBlock(unittest.TestCase):
+class TestDataBlock(TestDataStructures):
     def setUp(self):
         ds.BLOCK_SIZE = 20
         device_io.BLOCK_SIZE = 20
@@ -762,6 +763,23 @@ class TestDataBlock(unittest.TestCase):
         output = self.cls.data
         self.assertEqual(output, expected)
 
+    def test_is_full_true(self):
+        self.cls = ds.DataBlock(index=0)
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'this is test data   '
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.DataBlock(device=device_io.Disk(PATH), index=0)
+        self.assertTrue(self.cls.is_full())
+
+    def test_is_full_false(self):
+        self.cls = ds.DataBlock(index=0)
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'this is test data\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.DataBlock(device=device_io.Disk(PATH), index=0)
+        self.assertFalse(self.cls.is_full())
 
 
 if __name__ == '__main__':

@@ -3,7 +3,7 @@ from unix_fs import device_io
 from unix_fs import data_structures as ds
 
 
-def makefs(root_path):
+def makefs(root_path, verbose=False):
     """
         Layout:
         Superblock
@@ -12,13 +12,14 @@ def makefs(root_path):
         Block Freelist
         Root Directory
     """
-    print("Creating file system at {}".format(root_path))
+    if verbose:
+        print("Creating file system at {}".format(root_path))
     bootstrap_data = bytes(ds.SuperBlock())
     bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_INODES)
-    bootstrap_data += bytes(ds.InodeFreeListBootstrap())
-    bootstrap_data += bytes(ds.BlockFreeListBootstrap())
+    bootstrap_data += bytes(ds.InodeFreeList())
+    bootstrap_data += bytes(ds.DataBlockFreeList())
     bootstrap_data += bytes(ds.DirectoryBlock('/'))
-    bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_BLOCKS)
+    bootstrap_data += bytes(ds.BLOCK_SIZE * ds.NUM_DATA_BLOCKS)
     disk = device_io.Disk(root_path)
     disk.open()
     disk.seek(0)

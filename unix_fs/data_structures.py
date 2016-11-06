@@ -225,13 +225,13 @@ class AllocableBLock(Block):
     def freelist(self) -> FreeList:
         return FreeList(self._device)
 
-    def allocate(self):
+    def allocate(self) -> None:
         if self.index is None:
             self.index = self.freelist.allocate()
         else:
             raise Exception("{} already allocated at index {}".format(self.__class__, self.index))
 
-    def deallocate(self):
+    def deallocate(self) -> None:
         if self.index is not None:
             self.freelist.deallocate(self.index)
             self.index = None
@@ -242,11 +242,11 @@ class AllocableBLock(Block):
 class Inode(AllocableBLock):
     """ Base class for files and directories  """
 
-    def __init__(self, itype=0, device=None, index=None):
+    def __init__(self, i_type=0, device=None, index=None):
         super().__init__(device=device, index=index)
         self._index0_block_address = 1
 
-        self.i_type = itype
+        self.i_type = i_type
         self.address_direct = [0] * INODE_NUM_DIRECT_BLOCKS
 
         self._format = 'l{}l'.format(len(self.address_direct))
@@ -272,6 +272,23 @@ class Inode(AllocableBLock):
         index_0_byte_address = len(bytes(SuperBlock()))
         index_0_block_address = int(index_0_byte_address/BLOCK_SIZE)
         return index_0_block_address + self.index
+
+    def _last_assigned_address(self) -> int:
+        index_last_assigned = 0
+        for address in self.address_direct:
+            if address != 0:
+                index_last_assigned = address
+        return index_last_assigned
+
+    def _add_to_address_list(self, block) -> None:
+        # Find the first spot to add the block index to
+        for i in range(len(self.address_direct)):
+            if self.address_direct[i] == 0:
+                self.address_direct[i] = block.index
+                self.__write__()
+                break
+        else:
+            raise Exception('File full')
 
 
 class DataBlock(AllocableBLock):
@@ -304,6 +321,10 @@ class DataBlock(AllocableBLock):
                        BLOCK_SIZE  # for the root directory
         index_0_block_address = int(index_0_byte_address/BLOCK_SIZE)
         return index_0_block_address + self.index
+
+    def is_full(self) -> bool:
+        self.__read__()
+        return len(self.data) == BLOCK_SIZE
 
 
 class DirectoryBlock(DataBlock):
