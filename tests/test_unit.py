@@ -577,7 +577,7 @@ class TestDirectoryBlock(unittest.TestCase):
         ds.BLOCK_SIZE = device_io.BLOCK_SIZE = 10
         ds.NUM_DATA_BLOCKS = 10
         ds.MAX_FILENAME_LENGTH = 5
-        ds.NUM_FILES_PER_DIR = 5
+        ds.NUM_FILES_PER_DIR_BLOCK = 5
         self.cls = ds.DirectoryBlock()
         open(PATH, 'a').close()
 
@@ -620,24 +620,106 @@ class TestDirectoryBlock(unittest.TestCase):
             output = f.read()
         self.assertEqual(output, expected)
 
-        def test_read(self):
-            self.cls = ds.DirectoryBlock(index=0)
-            input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
-                         b'test\x00' \
-                         b'f0\x00\x00\x00f1\x00\x00\x00f2\x00\x00\x00f3\x00\x00\x00f4\x00\x00\x00' + \
-                         b'\x00\x00' \
-                         b'\x00\x00\x00\x00\x00\x00\x00\x00' \
-                         b'\x01\x00\x00\x00\x00\x00\x00\x00' \
-                         b'\x02\x00\x00\x00\x00\x00\x00\x00' \
-                         b'\x03\x00\x00\x00\x00\x00\x00\x00' \
-                         b'\x04\x00\x00\x00\x00\x00\x00\x00'
+    def test_read(self):
+        self.cls = ds.DirectoryBlock(index=0)
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'test\x00' \
+                     b'f0\x00\x00\x00f1\x00\x00\x00f2\x00\x00\x00f3\x00\x00\x00f4\x00\x00\x00' + \
+                     b'\x00\x00' \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                     b'\x01\x00\x00\x00\x00\x00\x00\x00' \
+                     b'\x02\x00\x00\x00\x00\x00\x00\x00' \
+                     b'\x03\x00\x00\x00\x00\x00\x00\x00' \
+                     b'\x04\x00\x00\x00\x00\x00\x00\x00'
 
-            with open(PATH, 'wb') as f:
-                f.write(input_data)
-            self.cls = ds.DirectoryBlock(device=device_io.Disk(PATH), index=0)
-            self.assertEqual(self.cls.name, 'test')
-            self.assertEqual(self.cls.entry_names, ['f{}'.format(i) for i in range(5)])
-            self.assertEqual(self.cls.entry_inode_indices, list(range(5)))
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.DirectoryBlock(device=device_io.Disk(PATH), index=0)
+        self.assertEqual(self.cls.name, 'test')
+        self.assertEqual(self.cls.entry_names, ['f{}'.format(i) for i in range(5)])
+        self.assertEqual(self.cls.entry_inode_indices, list(range(5)))
+
+    def test_add_entry_no_device_1(self):
+        self.cls.add_entry('f', 1, write_back=False)
+        self.assertEqual(self.cls.entry_names, ['f', '', '', '', ''])
+        self.assertEqual(self.cls.entry_inode_indices, [1, 0, 0, 0, 0])
+
+    def test_add_entry_no_device_2(self):
+        self.cls.add_entry('f1', 1, write_back=False)
+        self.cls.add_entry('f2', 2, write_back=False)
+        self.cls.add_entry('f3', 3, write_back=False)
+        self.assertEqual(self.cls.entry_names,
+                         ['f1', 'f2', 'f3', '', ''])
+        self.assertEqual(self.cls.entry_inode_indices, [1, 2, 3, 0, 0])
+
+    def test_remove_entry_no_device_1(self):
+        self.cls.entry_names = ['f1', 'f2', 'f3', '', '']
+        self.cls.entry_inode_indices = [1, 2, 3, 0, 0]
+        self.cls.remove_entry('f1', 1, write_back=False)
+        self.assertEqual(self.cls.entry_names,
+                         ['', 'f2', 'f3', '', ''])
+        self.assertEqual(self.cls.entry_inode_indices, [0, 2, 3, 0, 0])
+
+    def test_remove_add_entry_no_device_1(self):
+        self.cls.entry_names = ['f1', 'f2', 'f3', '', '']
+        self.cls.entry_inode_indices = [1, 2, 3, 0, 0]
+        self.cls.remove_entry('f1', 1, write_back=False)
+        self.cls.add_entry('f4', 4, write_back=False)
+        self.assertEqual(self.cls.entry_names,
+                         ['f4', 'f2', 'f3', '', ''])
+        self.assertEqual(self.cls.entry_inode_indices, [4, 2, 3, 0, 0])
+
+    def test_add_entry_overflow_no_device(self):
+        with self.assertRaises(Exception):
+            for i in range(ds.NUM_FILES_PER_DIR_BLOCK + 1):
+                self.cls.add_entry('f{}'.format(i), i, write_back=False)
+
+    def test_remove_entry_doesnt_exist_no_device(self):
+        with self.assertRaises(Exception):
+            self.cls.remove_entry('random_name', 4, write_back=False)
+
+    def test_add_item_with_device(self):
+        self.cls = ds.DirectoryBlock(index=0)
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.name = 'test'
+        self.cls.add_entry('f1', 1)
+        # self.cls.__write__()
+        expected = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                   b'test\x00' \
+                   b'f1\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00' \
+                   b'\x01\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
+
+    def test_remove_item_with_device(self):
+        self.cls = ds.DirectoryBlock(index=0)
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.name = 'test'
+        self.cls.add_entry('f1', 1)
+        self.cls.add_entry('f2', 2)
+        self.cls.add_entry('f3', 3)
+        self.cls.remove_entry('f2', 2)
+        expected = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                   b'test\x00' \
+                   b'f1\x00\x00\x00\x00\x00\x00\x00\x00f3\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00' + \
+                   b'\x00\x00' \
+                   b'\x01\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x03\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00'
+
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
 
 
 class TestDataBlock(unittest.TestCase):

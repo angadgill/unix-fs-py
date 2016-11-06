@@ -20,7 +20,7 @@ NUM_INODES = 10
 INODE_NUM_DIRECT_BLOCKS = 5
 INODE_NUM_1_INDIRECT_BLOCKS = 1 # number of single indirect blocks
 
-NUM_FILES_PER_DIR = 5
+NUM_FILES_PER_DIR_BLOCK = 5
 MAX_FILENAME_LENGTH = 5  # bytes
 
 
@@ -311,12 +311,12 @@ class DirectoryBlock(DataBlock):
     def __init__(self, device=None, index=None, name=''):
         super().__init__(device=device, index=index)
         self.name = name
-        self.entry_names = [''] * NUM_FILES_PER_DIR
-        self.entry_inode_indices = [0] * NUM_FILES_PER_DIR
+        self.entry_names = [''] * NUM_FILES_PER_DIR_BLOCK
+        self.entry_inode_indices = [0] * NUM_FILES_PER_DIR_BLOCK
 
         self._format = '{}s'.format(MAX_FILENAME_LENGTH) + \
-                       ''.join(['{}s'.format(MAX_FILENAME_LENGTH)] * NUM_FILES_PER_DIR) + \
-                       '{}l'.format(NUM_FILES_PER_DIR)
+                       ''.join(['{}s'.format(MAX_FILENAME_LENGTH)] * NUM_FILES_PER_DIR_BLOCK) + \
+                       '{}l'.format(NUM_FILES_PER_DIR_BLOCK)
 
         if device is not None and index is not None:
             self.__read__()
@@ -330,11 +330,36 @@ class DirectoryBlock(DataBlock):
     @_items.setter
     def _items(self, value):
         self.name = self.bytes_to_str(value[0], strip='\x00')
-        self.entry_names = [self.bytes_to_str(v, strip='\x00') for v in value[1:1+NUM_FILES_PER_DIR]]
-        self.entry_inode_indices = value[1+NUM_FILES_PER_DIR:]
+        self.entry_names = [self.bytes_to_str(v, strip='\x00') for v in value[1:1+NUM_FILES_PER_DIR_BLOCK]]
+        self.entry_inode_indices = value[1+NUM_FILES_PER_DIR_BLOCK:]
 
-    # def add_entry(self):
-    #
-    #
-    # def remove_entry(self):
-    #
+    def add_entry(self, entry_name, entry_inode_index, write_back=True):
+        """ Add entry to Dir Block, in the first available location """
+        if len(entry_name) > MAX_FILENAME_LENGTH:
+            raise Exception('Given entry_name "" is too long (> {})'.format(entry_name, MAX_FILENAME_LENGTH))
+
+        for i in range(NUM_FILES_PER_DIR_BLOCK):
+            if self.entry_names[i] == '' and self.entry_inode_indices[i] == 0:
+                self.entry_names[i] = entry_name
+                self.entry_inode_indices[i] = entry_inode_index
+                if write_back:
+                    self.__write__()
+                break
+        else:
+            raise Exception('{} {} ("{}") full'.format(self.__class__, self.index, self.name))
+
+    def remove_entry(self, entry_name, entry_inode_index, write_back=True):
+        """ Remove entry based on name and index """
+
+        for i in range(NUM_FILES_PER_DIR_BLOCK):
+            if self.entry_names[i] == entry_name and self.entry_inode_indices[i] == entry_inode_index:
+                self.entry_names[i] = ''
+                self.entry_inode_indices[i] = 0
+                if write_back:
+                    self.__write__()
+                break
+        else:
+            raise Exception('{} {} ("{}") does not contain entry "{}"'.
+                            format(self.__class__, self.index,
+                                   self.name, entry_name))
+
