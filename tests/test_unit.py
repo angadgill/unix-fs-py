@@ -572,5 +572,115 @@ class TestDataBlockFreelist(TestFreeList):
         self.assertEqual(output, expected)
 
 
+class TestDirectoryBlock(unittest.TestCase):
+    def setUp(self):
+        ds.BLOCK_SIZE = device_io.BLOCK_SIZE = 10
+        ds.NUM_DATA_BLOCKS = 10
+        ds.MAX_FILENAME_LENGTH = 5
+        ds.NUM_FILES_PER_DIR = 5
+        self.cls = ds.DirectoryBlock()
+        open(PATH, 'a').close()
+
+    def tearDown(self):
+        del self.cls
+        os.remove(PATH)
+
+    def test_bytes(self):
+        self.cls.name = 'test'
+        self.cls.entry_names = ['f{}'.format(i) for i in range(5)]
+        self.cls.entry_inode_indices = list(range(5))
+        output = bytes(self.cls)
+        expected = b'test\x00' \
+                   b'f0\x00\x00\x00f1\x00\x00\x00f2\x00\x00\x00f3\x00\x00\x00f4\x00\x00\x00' \
+                   b'\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                   b'\x01\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x02\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x03\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x04\x00\x00\x00\x00\x00\x00\x00'
+        self.assertEqual(output, expected)
+
+    def test_write(self):
+        self.cls = ds.DirectoryBlock(index=0)
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.name = 'test'
+        self.cls.entry_names = ['f{}'.format(i) for i in range(5)]
+        self.cls.entry_inode_indices = list(range(5))
+        self.cls.__write__()
+        expected = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                   b'test\x00' \
+                   b'f0\x00\x00\x00f1\x00\x00\x00f2\x00\x00\x00f3\x00\x00\x00f4\x00\x00\x00' \
+                   b'\x00\x00' \
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x01\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x02\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x03\x00\x00\x00\x00\x00\x00\x00' \
+                   b'\x04\x00\x00\x00\x00\x00\x00\x00'
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
+
+        def test_read(self):
+            self.cls = ds.DirectoryBlock(index=0)
+            input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                         b'test\x00' \
+                         b'f0\x00\x00\x00f1\x00\x00\x00f2\x00\x00\x00f3\x00\x00\x00f4\x00\x00\x00' + \
+                         b'\x00\x00' \
+                         b'\x00\x00\x00\x00\x00\x00\x00\x00' \
+                         b'\x01\x00\x00\x00\x00\x00\x00\x00' \
+                         b'\x02\x00\x00\x00\x00\x00\x00\x00' \
+                         b'\x03\x00\x00\x00\x00\x00\x00\x00' \
+                         b'\x04\x00\x00\x00\x00\x00\x00\x00'
+
+            with open(PATH, 'wb') as f:
+                f.write(input_data)
+            self.cls = ds.DirectoryBlock(device=device_io.Disk(PATH), index=0)
+            self.assertEqual(self.cls.name, 'test')
+            self.assertEqual(self.cls.entry_names, ['f{}'.format(i) for i in range(5)])
+            self.assertEqual(self.cls.entry_inode_indices, list(range(5)))
+
+
+class TestDataBlock(unittest.TestCase):
+    def setUp(self):
+        ds.BLOCK_SIZE = 20
+        device_io.BLOCK_SIZE = 20
+        ds.NUM_DATA_BLOCKS = 10
+        self.cls = ds.DataBlock()
+        open(PATH, 'a').close()
+
+    def tearDown(self):
+        del self.cls
+        os.remove(PATH)
+
+    def test_bytes(self):
+        self.cls.data = 'this is test data'
+        expected = b'this is test data\x00\x00\x00'
+        output = bytes(self.cls)
+        self.assertEqual(output, expected)
+
+    def test_write(self):
+        self.cls = ds.DataBlock(index=0)
+        expected = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                   b'this is test data\x00\x00\x00'
+        self.cls._device = device_io.Disk(PATH)
+        self.cls.data = 'this is test data'
+        self.cls.__write__()
+        with open(PATH, 'rb') as f:
+            output = f.read()
+        self.assertEqual(output, expected)
+
+    def test_read(self):
+        self.cls = ds.DataBlock(index=0)
+        input_data = bytes(self.cls.address * ds.BLOCK_SIZE) + \
+                     b'this is test data\x00\x00\x00'
+        with open(PATH, 'wb') as f:
+            f.write(input_data)
+        self.cls = ds.DataBlock(device=device_io.Disk(PATH), index=0)
+        expected = 'this is test data'
+        output = self.cls.data
+        self.assertEqual(output, expected)
+
+
+
 if __name__ == '__main__':
     unittest.main()

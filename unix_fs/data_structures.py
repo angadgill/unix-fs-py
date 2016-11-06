@@ -216,14 +216,36 @@ class DataBlockFreeList(FreeList):
         return block_address
 
 
-class Inode(Block):
+class AllocableBLock(Block):
+    def __init__(self, device=None, index=None):
+        super().__init__(device=device)
+        self.index = index
+
+    @property
+    def freelist(self) -> FreeList:
+        return FreeList(self._device)
+
+    def allocate(self):
+        if self.index is None:
+            self.index = self.freelist.allocate()
+        else:
+            raise Exception("{} already allocated at index {}".format(self.__class__, self.index))
+
+    def deallocate(self):
+        if self.index is not None:
+            self.freelist.deallocate(self.index)
+            self.index = None
+        else:
+            raise Exception("{} is not allocated".format(self.__class__))
+
+
+class Inode(AllocableBLock):
     """ Base class for files and directories  """
 
     def __init__(self, itype=0, device=None, index=None):
-        super().__init__(device=device)
+        super().__init__(device=device, index=index)
         self._index0_block_address = 1
 
-        self.index = index
         self.i_type = itype
         self.address_direct = [0] * INODE_NUM_DIRECT_BLOCKS
 
@@ -231,6 +253,10 @@ class Inode(Block):
 
         if device is not None and index is not None:
             self.__read__()
+
+    @property
+    def freelist(self) -> FreeList:
+        return InodeFreeList(device=self._device)
 
     @property
     def _items(self):
@@ -243,91 +269,72 @@ class Inode(Block):
 
     @property
     def address(self) -> int:
-        return self._index0_block_address + self.index
-
-    def allocate(self):
-        if self.index is None:
-            self.index = InodeFreeList(self._device).allocate()
-        else:
-            raise Exception("{} already allocated at index {}".format(self.__class__, self.index))
-
-    def deallocate(self):
-        if self.index is not None:
-            InodeFreeList(self._device).deallocate(self.index)
-            self.index = None
-        else:
-            raise Exception("{} is not allocated".format(self.__class__))
+        index_0_byte_address = len(bytes(SuperBlock()))
+        index_0_block_address = int(index_0_byte_address/BLOCK_SIZE)
+        return index_0_block_address + self.index
 
 
-class DirectoryBlock(Block):
-    """ Data written to the block pointed to by the Directory Inode """
-
-    def __init__(self, name):
-        self.name = name
-        self.filenames = [''] * NUM_FILES_PER_DIR
-        self.inode_numbers = [0] * NUM_FILES_PER_DIR
-
-    def __bytes__(self):
-        return self.str_to_bytes(self.name) +\
-               self.str_list_to_bytes(self.filenames) + \
-               self.int_list_to_bytes(self.inode_numbers)
-
-    def __read__(self, byte_data):
-        self.name = self.bytes_to_str(byte_data[:MAX_FILENAME_LENGTH])
-        start = MAX_FILENAME_LENGTH
-        end = start + MAX_FILENAME_LENGTH*NUM_FILES_PER_DIR
-        self.filenames = self.bytes_to_str_list(byte_data[start:end])
-        start = end
-        end = start + ADDRESS_LENGTH*NUM_FILES_PER_DIR
-        self.inode_numbers = self.bytes_to_int_list(byte_data[start:end])
-        print(self.name)
-        print(self.filenames)
-        print(self.inode_numbers)
-
-
-class DataBlock(Block):
-    index0_address = BLOCK_SIZE + (BLOCK_SIZE * NUM_INODES) + \
-                     len(bytes(InodeFreeList())) + \
-                     len(bytes(DataBlockFreeList())) + \
-                     len(bytes(DirectoryBlock('/')))
-
-    def __init__(self, device, index=None):
-        self._device = device
-
-        # default initialization
-        self.index = None
+class DataBlock(AllocableBLock):
+    """ All data stored as utf-8 text characters """
+    def __init__(self, device=None, index=None):
+        super().__init__(device=device, index=index)
         self.data = None
-
-        # If no index is provided, allocate new inode
-        if index is None:
-            self.allocate()
-        else:  # else, read inode from device
-            self.index = index
-            self.data = self.__read__()
+        self._format = '{}s'.format(BLOCK_SIZE)
+        if device is not None and index is not None:
+            self.__read__()
 
     @property
-    def address(self):
-        """ Return block address """
-        return self.index0_address + self.index*BLOCK_SIZE
+    def freelist(self) -> FreeList:  # List to check when allocating / deallocating
+        return DataBlockFreeList(device=self._device)
 
-    def allocate(self):
-        bfree = DataBlockFreelist(self._device)
-        self.index = bfree.allocate()
+    @property
+    def _items(self):
+        return [self.str_to_bytes(self.data, pad_to=0)]
 
-    def deallocate(self):
-        bfree = DataBlockFreelist(self._device)
-        bfree.deallocate(self.index)
+    @_items.setter
+    def _items(self, value):
+        self.data = self.bytes_to_str(value[0], strip='\x00')
 
-    def __write__(self, data):
-        self._device.seek(self.address)
-        if type(data) == str:
-            self._device.write(self.str_to_bytes(data, pad_to=BLOCK_SIZE))
-        else:
-            self._device.write(bytes(data))
-
-    def __read__(self):
-        self._device.seek(self.address)
-        data = self._device.read(BLOCK_SIZE)
-        return self.bytes_to_str(data)
+    @property
+    def address(self) -> int:
+        index_0_byte_address = len(bytes(SuperBlock())) + \
+                       len(bytes(Inode()) * NUM_INODES) + \
+                       len(bytes(InodeFreeList())) + \
+                       len(bytes(DataBlockFreeList())) + \
+                       BLOCK_SIZE  # for the root directory
+        index_0_block_address = int(index_0_byte_address/BLOCK_SIZE)
+        return index_0_block_address + self.index
 
 
+class DirectoryBlock(DataBlock):
+    """ Data written to the block pointed to by the Directory Inode """
+    def __init__(self, device=None, index=None, name=''):
+        super().__init__(device=device, index=index)
+        self.name = name
+        self.entry_names = [''] * NUM_FILES_PER_DIR
+        self.entry_inode_indices = [0] * NUM_FILES_PER_DIR
+
+        self._format = '{}s'.format(MAX_FILENAME_LENGTH) + \
+                       ''.join(['{}s'.format(MAX_FILENAME_LENGTH)] * NUM_FILES_PER_DIR) + \
+                       '{}l'.format(NUM_FILES_PER_DIR)
+
+        if device is not None and index is not None:
+            self.__read__()
+
+    @property
+    def _items(self):
+        return [self.str_to_bytes(self.name, pad_to=0)] + \
+               [self.str_to_bytes(f, pad_to=0) for f in self.entry_names] + \
+               self.entry_inode_indices
+
+    @_items.setter
+    def _items(self, value):
+        self.name = self.bytes_to_str(value[0], strip='\x00')
+        self.entry_names = [self.bytes_to_str(v, strip='\x00') for v in value[1:1+NUM_FILES_PER_DIR]]
+        self.entry_inode_indices = value[1+NUM_FILES_PER_DIR:]
+
+    # def add_entry(self):
+    #
+    #
+    # def remove_entry(self):
+    #
