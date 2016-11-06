@@ -6,6 +6,7 @@ from importlib import reload
 
 from unix_fs import device_io
 from unix_fs import data_structures as ds
+from unix_fs import utils
 
 PATH = 'temp_unit_test_file'
 
@@ -288,6 +289,17 @@ class TestInode(TestDataStructures):
         self.assertEqual(output, expected)
 
     def test_write_1(self):
+        write_data = bytes(ds.BLOCK_SIZE)+ \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+
+        with open(PATH, 'wb') as f:
+            f.write(write_data)
+
         expected = bytes(ds.BLOCK_SIZE)+ \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
@@ -295,8 +307,8 @@ class TestInode(TestDataStructures):
                    b'\x03\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x04\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        self.cls = ds.Inode(device=device_io.Disk(PATH))
-        self.cls.index = 0
+
+        self.cls = ds.Inode(device=device_io.Disk(PATH), index=0)
         self.cls.i_type = 1
         self.cls.address_direct = [1, 2, 3, 4, 5]
         self.cls.__write__()
@@ -305,6 +317,17 @@ class TestInode(TestDataStructures):
         self.assertEqual(output, expected)
 
     def test_write_2(self):
+        write_data = bytes(ds.BLOCK_SIZE * 3) + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00' + \
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+
+        with open(PATH, 'wb') as f:
+            f.write(write_data)
+
         expected = bytes(ds.BLOCK_SIZE * 3)+ \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x01\x00\x00\x00\x00\x00\x00\x00' + \
@@ -312,8 +335,7 @@ class TestInode(TestDataStructures):
                    b'\x03\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x04\x00\x00\x00\x00\x00\x00\x00' + \
                    b'\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        self.cls = ds.Inode(device=device_io.Disk(PATH))
-        self.cls.index = 2
+        self.cls = ds.Inode(device=device_io.Disk(PATH), index=2)
         self.cls.i_type = 1
         self.cls.address_direct = [1, 2, 3, 4, 5]
         self.cls.__write__()
@@ -358,8 +380,8 @@ class TestInode(TestDataStructures):
         with open(PATH, 'wb') as f:
             f.write(input_data)
         self.cls = ds.Inode(device=device_io.Disk(PATH))
-        self.assertEqual(self.cls.index, None)  # New inode should have a None index
-        self.cls.allocate()
+        # self.assertEqual(self.cls.index, None)  # New inode should have a None index
+        # self.cls.allocate()
         self.assertEqual(self.cls.index, 0)
         with self.assertRaises(Exception):
             self.cls.allocate()
@@ -371,8 +393,8 @@ class TestInode(TestDataStructures):
         with open(PATH, 'wb') as f:
             f.write(input_data)
         self.cls = ds.Inode(device=device_io.Disk(PATH))
-        self.assertEqual(self.cls.index, None)  # New inode should have a None index
-        self.cls.allocate()
+        # self.assertEqual(self.cls.index, None)  # New inode should have a None index
+        # self.cls.allocate()
         self.assertEqual(self.cls.index, 0)
         self.cls.deallocate()
         self.assertEqual(self.cls.index, None)
@@ -727,6 +749,18 @@ class TestDirectoryBlock(TestDataStructures):
         with open(PATH, 'rb') as f:
             output = f.read()
         self.assertEqual(output, expected)
+
+    def test_add_write_read(self):
+        reload(ds)
+        ds.NUM_FILES_PER_DIR_BLOCK = 5
+        reload(utils)
+        reload(device_io)
+        utils.makefs(PATH)
+        self.cls = ds.DirectoryBlock(device=device_io.Disk(PATH))
+        self.cls.add_entry('f1', 1)
+        self.cls = ds.DirectoryBlock(device=self.cls._device, index=1)
+        self.assertEqual(self.cls.entry_names, ['f1', '', '', '', ''])
+        self.assertEqual(self.cls.entry_inode_indices, [1, 0, 0, 0, 0])
 
 
 class TestDataBlock(TestDataStructures):

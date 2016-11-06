@@ -1,17 +1,14 @@
 """ File/Directory level abstractions go here """
-from unix_fs.data_structures import DataBlock, Inode
-
+from typing import List, Tuple
+from unix_fs.data_structures import Inode, DataBlock, DirectoryBlock
 
 class File(Inode):
     def __init__(self, device=None, index=None):
         super().__init__(i_type=1, device=device, index=index)
 
-        if self._device is not None and self.index is None:
-            self.allocate()
-
     def write(self, data):
         """ Write to the File. Allocate DataBlocks and write text to them """
-
+        # TODO: This is basically "append" right now. Update when "seek" is added
         # Check to see if any DataBlock is already assigned
         if sum(self.address_direct) != 0:
             # If assigned, append data to last block
@@ -28,7 +25,6 @@ class File(Inode):
             self._add_to_address_list(block)
             # Write to block
             excess_data = block.append(excess_data)
-            block.__write__()
 
     def read(self):
         """ Reads and returns the first block, for now """
@@ -46,22 +42,56 @@ class Directory(Inode):
     def __init__(self, device, index=None):
         super().__init__(i_type=2, device=device, index=index)
 
-    def write(self, data):
-        block = Directory(self._device)
-        self.add_block_to_list(block)
-        block.__write__(data)
+    def add(self, entry_name, entry_inode):
+        """ Add to the Directory. Allocate DirectoryBlocks and write name and inodes to them """
 
-    def read(self):
-        """ Reads and returns the first block, for now """
-        block = DataBlock(self._device, self.address_direct[0])
-        return block.__read__()
+        # Check to see if name already exits
+        existing_names, _ = self.read()
+        if entry_name in existing_names:
+            raise Exception('{}: entry already exists'.format(self.__class__))
 
-    def add_block_to_list(self, block):
-        # Find the first spot to add the block index to
-        for i in range(len(self.address_direct)):
-            if self.address_direct[i] == 0:
-                self.address_direct[i] = block.index
-                break
+        # Check to see if any DirectoryBlocks is already assigned
+        if sum(self.address_direct) != 0:
+            # If assigned, append data to last block
+            last_assigned = self._last_assigned_address()
+            block = DirectoryBlock(device=self._device, index=last_assigned)
+            if block.is_full():
+                # Assign a new block
+                block = DirectoryBlock(device=self._device)
+                self._add_to_address_list(block)
         else:
-             raise Exception('File full')
-        self.__write__()
+            # assign a new block and add to Inode
+            block = DirectoryBlock(device=self._device)
+            self._add_to_address_list(block)
+        # Write to block
+        block.add_entry(entry_name=entry_name, entry_inode_index=entry_inode)
+
+    def remove(self, entry_name, entry_inode):
+        """ Remove from Directory """
+        if sum(self.address_direct) == 0:
+            raise Exception('{} {} contains no files'.format(self.__class__, self.index))
+
+        for address in self.address_direct:
+            block = DirectoryBlock(device=self._device, index=address)
+            try:
+                block.remove_entry(entry_name=entry_name, entry_inode_index=entry_inode)
+            # TODO: Change this to not use try except
+            except Exception:
+                continue
+
+    def read(self) -> Tuple[List[str], List[int]]:
+        """ Reads entry names and inode numners from directory """
+        entry_names = []  # type: List
+        entry_inodes = []  # type: List
+        for address in self.address_direct:
+            if address != 0:
+                block = DirectoryBlock(device=self._device, index=address)
+                for e in block.entry_names:
+                    if e != '':
+                        entry_names += [e]
+                for e in block.entry_inode_indices:
+                    if e != 0:
+                        entry_inodes += [e]
+            else:
+                break
+        return entry_names, entry_inodes

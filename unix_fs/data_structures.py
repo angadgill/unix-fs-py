@@ -254,6 +254,9 @@ class Inode(AllocableBLock):
         if device is not None and index is not None:
             self.__read__()
 
+        if self._device is not None and self.index is None:
+            self.allocate()
+
     @property
     def freelist(self) -> FreeList:
         return InodeFreeList(device=self._device)
@@ -368,6 +371,14 @@ class DirectoryBlock(DataBlock):
         self.entry_names = [self.bytes_to_str(v, strip='\x00') for v in value[1:1+NUM_FILES_PER_DIR_BLOCK]]
         self.entry_inode_indices = value[1+NUM_FILES_PER_DIR_BLOCK:]
 
+    def is_full(self) -> bool:
+        self.__read__()
+        full = True
+        for e in self.entry_names:
+            if e == '':
+                full = False
+        return full
+
     def add_entry(self, entry_name, entry_inode_index, write_through=True):
         """ Add entry to Dir Block, in the first available location """
         if len(entry_name) > MAX_FILENAME_LENGTH:
@@ -385,7 +396,6 @@ class DirectoryBlock(DataBlock):
 
     def remove_entry(self, entry_name, entry_inode_index, write_through=True):
         """ Remove entry based on name and index """
-
         for i in range(NUM_FILES_PER_DIR_BLOCK):
             if self.entry_names[i] == entry_name and self.entry_inode_indices[i] == entry_inode_index:
                 self.entry_names[i] = ''
@@ -397,4 +407,3 @@ class DirectoryBlock(DataBlock):
             raise Exception('{} {} ("{}") does not contain entry "{}"'.
                             format(self.__class__, self.index,
                                    self.name, entry_name))
-
