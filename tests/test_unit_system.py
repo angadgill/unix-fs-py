@@ -104,3 +104,7 @@ class TestDirectory(TestSystem):
         for i in range(ds.NUM_FILES_PER_DIR_BLOCK):
             self.cls.add('test{}'.format(i+1), i+1)
         self.assertEqual(self.cls.read(), expected)
+
+    def test_name(self):
+        self.cls.name = 'test'
+        self.assertEqual(self.cls.name, 'test')

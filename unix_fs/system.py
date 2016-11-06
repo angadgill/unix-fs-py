@@ -42,6 +42,26 @@ class Directory(Inode):
     def __init__(self, device, index=None):
         super().__init__(i_type=2, device=device, index=index)
 
+    # TODO: Name assignment to directory is clunky
+    @property
+    def name(self) -> str:
+        if self.address_direct[0] == 0:
+            raise AttributeError("{}.name not set yet".format(self.__class__))
+        else:
+            block = DirectoryBlock(device=self._device, index=self.address_direct[0])
+            return block.name
+
+    @name.setter
+    def name(self, name, write_through=True) -> None:
+        if self.address_direct[0] == 0:
+            block = DirectoryBlock(device=self._device)
+            self._add_to_address_list(block)
+        else:
+            block = DirectoryBlock(device=self._device, index=self.address_direct[0])
+        block.name = name
+        if write_through:
+            block.__write__()
+
     def add(self, entry_name, entry_inode):
         """ Add to the Directory. Allocate DirectoryBlocks and write name and inodes to them """
 
